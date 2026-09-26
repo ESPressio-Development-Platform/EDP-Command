@@ -2,11 +2,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <type_traits>
 #include <ESPressio_Clock.hpp>
+#include <ESPressio_Memory.hpp>
 
 namespace ESPressio::Command {
-
 using Duration = ESPressio::Clock::Duration;
 using MonotonicTimestamp = ESPressio::Clock::MonotonicTimestamp;
 
@@ -27,17 +28,9 @@ struct InvocationObservation final {
     ExecutionFailure Failure{ExecutionFailure::ExecutorFailure};
 };
 
-template<class TCommand>
-using Request = typename TCommand::Request;
-
-template<class TCommand>
-using Response = typename TCommand::Response;
-
-template<class TCommand>
-concept CommandType = requires {
-    typename TCommand::Request;
-    typename TCommand::Response;
-};
+template<class TCommand> using Request = typename TCommand::Request;
+template<class TCommand> using Response = typename TCommand::Response;
+template<class TCommand> concept CommandType = requires { typename TCommand::Request; typename TCommand::Response; };
 
 class CancellationToken final {
     const bool* _requested{nullptr};
@@ -47,16 +40,39 @@ public:
 };
 
 template<class TResponse>
-struct ExecutionResult final {
-    CompletionStatus Status{CompletionStatus::Failed};
-    ExecutionFailure Failure{ExecutionFailure::ExecutorFailure};
-    TResponse ResponseValue;
+class ExecutionResult final {
+    CompletionStatus _status;
+    ExecutionFailure _failure;
+    std::optional<TResponse> _response;
+    explicit ExecutionResult(CompletionStatus status, ExecutionFailure failure) noexcept : _status(status), _failure(failure) {}
+public:
+    static ExecutionResult Succeeded(TResponse response) noexcept {
+        ExecutionResult result(CompletionStatus::Succeeded, ExecutionFailure::ExecutorFailure);
+        result._response.emplace(ESPressio::Memory::OwnershipTransfer::Move(response));
+        return result;
+    }
+    static ExecutionResult Rejected(TResponse response) noexcept {
+        ExecutionResult result(CompletionStatus::Rejected, ExecutionFailure::ExecutorFailure);
+        result._response.emplace(ESPressio::Memory::OwnershipTransfer::Move(response));
+        return result;
+    }
+    static ExecutionResult Failed() noexcept { return ExecutionResult(CompletionStatus::Failed, ExecutionFailure::ExecutorFailure); }
+    [[nodiscard]] CompletionStatus Status() const noexcept { return _status; }
+    [[nodiscard]] ExecutionFailure Failure() const noexcept { return _failure; }
+    [[nodiscard]] bool HasResponse() const noexcept { return _response.has_value(); }
+    TResponse TakeResponse() noexcept { return ESPressio::Memory::OwnershipTransfer::Move(_response.value()); }
 };
 
 template<>
-struct ExecutionResult<void> final {
-    CompletionStatus Status{CompletionStatus::Failed};
-    ExecutionFailure Failure{ExecutionFailure::ExecutorFailure};
+class ExecutionResult<void> final {
+    CompletionStatus _status;
+    explicit ExecutionResult(CompletionStatus status) noexcept : _status(status) {}
+public:
+    static ExecutionResult Succeeded() noexcept { return ExecutionResult(CompletionStatus::Succeeded); }
+    static ExecutionResult Rejected() noexcept { return ExecutionResult(CompletionStatus::Rejected); }
+    static ExecutionResult Failed() noexcept { return ExecutionResult(CompletionStatus::Failed); }
+    [[nodiscard]] CompletionStatus Status() const noexcept { return _status; }
+    [[nodiscard]] ExecutionFailure Failure() const noexcept { return ExecutionFailure::ExecutorFailure; }
 };
 
 } // ESPressio::Command
