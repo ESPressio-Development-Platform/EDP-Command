@@ -36,7 +36,7 @@ using HandlerProvider = typename TComposition::template Select<
 /// by a Command Bootstrap. Capacity is checked by Bootstrap against InvocationCapacity.
 using WaitProviderRequirement = ESPressio::System::CompositionFramework::Requirement<
     ESPressio::Threading::BoundedWaitWake,
-    ESPressio::System::CompositionFramework::RequirementScope::Reachable,
+    ESPressio::System::CompositionFramework::RequirementScope::ExternalDomain,
     ESPressio::System::CompositionFramework::ExactlyProviders<1U>
 >;
 
