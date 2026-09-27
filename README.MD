@@ -31,7 +31,10 @@ public:
         const AddRequest& request,
         Command::CancellationToken cancellation
     ) noexcept {
-        if (cancellation.IsRequested()) return Command::ExecutionResult<AddResponse>::Failed();
+        if (cancellation.IsRequested()) {
+            return Command::ExecutionResult<AddResponse>::Failed();
+        }
+
         return Command::ExecutionResult<AddResponse>::Succeeded(
             AddResponse{request.Left + request.Right}
         );
@@ -73,11 +76,11 @@ using ApplicationArchitecture = Composition::Architecture<
 using AddBootstrap = Command::Bootstrap<
     Add,
     ApplicationArchitecture,
-    Command::ResourcePlan<4, 3, 1>
+    Command::ResourcePlan<4U, 3U, 1U>
 >;
 ```
 
-`ResourcePlan<4, 3, 1>` reserves four invocation records, permits three queued invocations and one executing invocation. Bootstrap statically rejects a wait provider whose capacity is smaller than the invocation capacity.
+`ResourcePlan<4U, 3U, 1U>` reserves four invocation records, permits three queued invocations and one executing invocation. Bootstrap statically rejects a wait provider whose capacity is smaller than the invocation capacity.
 
 ### 5. Construct persistent providers and Bootstrap
 
@@ -86,22 +89,30 @@ AddHandler addHandler;
 WaitProvider waits;
 AddBootstrap addCommand(addHandler, waits);
 
-if (!addCommand.Initialize()) return 1;
+if (addCommand.Initialize() != Command::InitializationResult::Initialized) {
+    return 1;
+}
 ```
 
-These provider objects must outlive the Command Bootstrap. Topology is immutable after initialization.
+These provider objects must outlive the Command Bootstrap. Topology is immutable after initialization. Initialization is an operation, so its result is strongly typed rather than Boolean.
 
 ### 6. Dispatch, execute, wait and take the response
 
 ```cpp
 auto& runtime = addCommand.RuntimeInstance();
 auto dispatch = runtime.Dispatch(AddRequest{20, 22});
-if (!dispatch.Accepted()) return 2;
+if (!dispatch.Accepted()) {
+    return 2;
+}
 
 auto handle = dispatch.TakeHandle();
-if (!runtime.ExecuteOne()) return 3;
+if (runtime.ExecuteOne() != Command::ExecutionAttemptResult::Executed) {
+    return 3;
+}
 
-if (handle.WaitFor(Command::Duration{}) != Command::WaitResult::Terminal) return 4;
+if (handle.WaitFor(Command::Duration{}) != Command::WaitResult::Terminal) {
+    return 4;
+}
 
 auto response = handle.TakeResponse();
 if (response.HasValue()) {
@@ -109,13 +120,15 @@ if (response.HasValue()) {
 }
 ```
 
-`WaitFor` and `WaitUntil` are finite and non-consuming. Repeated waits on a terminal Handle return `Terminal`; provider interruption is reported as `Interrupted`; and authoritative terminal state wins a simultaneous timeout/wake race.
+`Accepted()` and `HasValue()` are predicates. Operations that can fail or produce multiple operational outcomes use dedicated result types. `WaitFor` and `WaitUntil` are finite and non-consuming. Repeated waits on a terminal Handle return `Terminal`; provider interruption is reported as `Interrupted`; and authoritative terminal state wins a simultaneous timeout/wake race.
 
 The complete source is [`examples/HelloCommand/main.cpp`](./examples/HelloCommand/main.cpp).
 
-## Lifecycle and cancellation
+## Lifecycle, outcome and cancellation
 
-Dispatch either fails without creating an invocation or atomically admits one and returns its exclusive move-only Handle. Accepted invocations move through `Queued`, `Executing`, `Completed` or `Cancelled`. `Completed` has the orthogonal disposition `Succeeded`, `Rejected` or `Failed`.
+Dispatch either fails without creating an invocation or atomically admits one and returns its exclusive move-only Handle. Accepted invocations move through `Queued`, `Executing`, `Completed` or `Cancelled`.
+
+Lifecycle state and terminal outcome are separate dimensions. A terminal invocation exposes one `Outcome`: `Succeeded`, `Rejected`, `Failed`, or `Cancelled`. Cancellation therefore remains the distinct lifecycle state `InvocationState::Cancelled` while also being observable as `Outcome::Cancelled`. `InvocationObservation` provides the genuine predicates `DidSucceed()`, `WasRejected()`, `DidFail()`, and `WasCancelled()`. `ExecutionFailure` remains orthogonal detail describing why an `Outcome::Failed` invocation failed.
 
 Cancellation request outcomes are `Requested`, `AlreadyRequested`, `TooLate`, and `InvalidHandle`. Cancellation is cooperative once execution has begun. Releasing/destroying a Handle never implicitly cancels work.
 
@@ -125,7 +138,7 @@ Cancellation request outcomes are `Requested`, `AlreadyRequested`, `TooLate`, an
 
 ## Integration boundary
 
-EDP-Command does not depend on Transport, Serialisation or Security. Inbound adapters use `InboundAdmission`; outbound adapters receive narrow invocation/completion capabilities and retain their own correlation identity.
+EDP-Command does not depend on Transport, Serialisation or Security. Inbound adapters use `InboundAdmission`; outbound adapters receive narrow invocation/completion capabilities and retain their own correlation identity. Completion publication is a fallible operation and returns `CompletionPublicationResult` (`Accepted`, `AlreadyCompleted`, or `Unavailable`) rather than a Boolean.
 
 ## Dependencies
 
