@@ -15,16 +15,14 @@ struct DoubleHandler : CF::Provider<C::Composition::Domain, CF::Offers<CF::Offer
     }
 };
 
-using WaitProvider = T::BoundedWaitWakeProvider<ESPressio::Platform::FreeRTOS::SignalProvider, 4U>;
+using WaitProvider = T::BoundedWaitWakeProvider<ESPressio::Platform::FreeRTOS::Synchronization::SignalProvider, 4U>;
 using CommandComposition = CF::Composition<C::Composition::Domain, DoubleHandler>;
 using ThreadingComposition = CF::Composition<T::Domain, WaitProvider>;
 using ApplicationArchitecture = CF::Architecture<CommandComposition, ThreadingComposition>;
 using CommandBootstrap = C::Bootstrap<DoubleCommand, ApplicationArchitecture, C::ResourcePlan<4, 3, 1>>;
 
 int main() {
-    DoubleHandler handler;
-    WaitProvider waits;
-    CommandBootstrap bootstrap(handler, waits);
+    DoubleHandler handler; WaitProvider waits; CommandBootstrap bootstrap(handler, waits);
     if (!bootstrap.Initialize()) return 1;
     auto& runtime = bootstrap.RuntimeInstance();
     auto dispatch = runtime.Dispatch(Request{21}); if (!dispatch.Accepted()) return 2;
