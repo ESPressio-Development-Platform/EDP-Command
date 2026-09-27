@@ -10,21 +10,21 @@
 
 namespace ESPressio::Command {
 
-template<class TCommand, class TComposition, class TPlan>
+/// Application-owned Command binding resolved from the complete cross-domain Architecture.
+template<class TCommand, class TArchitecture, class TPlan>
 requires CommandType<TCommand>
 class Bootstrap final {
 public:
     using Command = TCommand;
-    using CompositionType = TComposition;
+    using ArchitectureType = TArchitecture;
     using Plan = TPlan;
-    using HandlerProvider = Composition::HandlerProvider<TCommand, TComposition>;
-    using WaitProvider = Composition::WaitProvider<TComposition>;
+    using HandlerProvider = Composition::HandlerProvider<TCommand, TArchitecture>;
+    using WaitProvider = Composition::WaitProvider<TArchitecture>;
     using RuntimeType = Runtime<TCommand, HandlerProvider, WaitProvider, TPlan>;
 
-    static_assert(
-        WaitProvider::Capacity >= Plan::InvocationCapacity,
-        "Command wait provider capacity must cover every bounded invocation record"
-    );
+    static_assert(TArchitecture::IsValid, "Command Bootstrap requires a valid EDP-System Architecture");
+    static_assert(WaitProvider::Capacity >= Plan::InvocationCapacity,
+        "Command wait provider capacity must cover every bounded invocation record");
 
 private:
     HandlerProvider* _handler{nullptr};
@@ -33,9 +33,7 @@ private:
 
 public:
     Bootstrap(HandlerProvider& handler, WaitProvider& waitProvider) noexcept :
-        _handler(&handler),
-        _waitProvider(&waitProvider),
-        _runtime(handler, waitProvider) {}
+        _handler(&handler), _waitProvider(&waitProvider), _runtime(handler, waitProvider) {}
 
     Bootstrap(const Bootstrap&) = delete;
     Bootstrap& operator=(const Bootstrap&) = delete;
