@@ -8,8 +8,12 @@ A Handle intentionally extends the lifetime of a terminal record. Reclamation oc
 
 `ExecuteOne` is synchronous and processes at most one queue entry. `_executing` is checked against `ExecutionConcurrency`; v1 does not itself spawn workers. Cancellation is cooperative for executing work and immediate terminal marking for queued work. It is not forced thread cancellation.
 
+Handle waiting is provided by an externally owned EDP-Threading `BoundedWaitWake` provider resolved through the immutable application Architecture. `WaitFor` and `WaitUntil` are finite and non-consuming. Runtime checks terminal state both before and after the provider wait; therefore an invocation that becomes terminal during the wait is reported as `WaitResult::Terminal` even if the provider simultaneously reports timeout or interruption.
+
 The Runtime is not documented as safe for unsynchronized concurrent calls. Its booleans, ring indices and records are ordinary state, not atomics. A caller integrating multiple execution contexts must serialize access using the appropriate EDP-Threading architecture rather than assuming internal locking.
 
-Initialization is `Uninitialized → Running`. `BeginQuiesce` prevents new admission and chooses `Quiescent` immediately only when no occupied records remain; otherwise it enters `Quiescing`. Final reclamation transitions to `Quiescent` when active count reaches zero.
+Initialization is `Uninitialized` → `Running`. `Initialize` reports `InitializationResult`. `BeginQuiesce` reports `QuiesceResult`, prevents new admission and chooses `Quiescent` immediately only when no occupied records remain; otherwise it enters `Quiescing`. Final reclamation transitions to `Quiescent` when active count reaches zero.
 
-Measured host `sizeof(Runtime)` fixtures on 2026-09-27 were: 104 bytes for plan 2/1/1, 168 for 4/3/1, 352 for 10/8/2, and 656 for 20/16/4 with 4-byte Request/Response fixture types. These are validation measurements, not ABI guarantees for arbitrary Command/Executor types.
+Semantic terminal result is represented by `Outcome`, independent from lifecycle state. A cancelled invocation has `InvocationState::Cancelled` and `Outcome::Cancelled`; successful, rejected and failed invocations are lifecycle `Completed` with the corresponding terminal Outcome.
+
+Measured host `sizeof(Runtime)` fixtures on the first post-H16 regression gate on 2026-09-27 were: **112 bytes** for plan 2/1/1, **176 bytes** for 4/3/1, **360 bytes** for 10/8/2, and **664 bytes** for 20/16/4 with 4-byte Request/Response fixture types. These are validation measurements, not ABI guarantees for arbitrary Command/Handler/provider types.
