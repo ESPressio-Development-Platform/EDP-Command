@@ -1,20 +1,39 @@
 #!/usr/bin/env python3
-import pathlib, subprocess, sys, tempfile
+import os
+import pathlib
+import subprocess
+import tempfile
 
 root = pathlib.Path(__file__).resolve().parents[1]
-include = root / "src"
+workspace = root.parent
 source = root / "tests" / "host" / "command_runtime.cpp"
-compiler = "c++"
+compiler = os.environ.get("CXX", "c++")
 
 print("EDP-Command host contract suite")
-print("NOTE: sibling EDP-Clock and EDP-Memory include paths are required.")
-clock = root.parent / "EDP-Clock" / "src"
-memory = root.parent / "EDP-Memory" / "src"
+
+repositories = {
+    "EDP-Command": root,
+    "EDP-Clock": workspace / "EDP-Clock",
+    "EDP-Memory": workspace / "EDP-Memory",
+    "EDP-System": workspace / "EDP-System",
+    "EDP-Platform": workspace / "EDP-Platform",
+}
+
+missing = [name for name, path in repositories.items() if not (path / "src").is_dir()]
+if missing:
+    raise SystemExit(
+        "Missing sibling repositories: " + ", ".join(missing) +
+        ". Clone them beside EDP-Command."
+    )
+
+include_paths = [path / "src" for path in repositories.values()]
 
 with tempfile.TemporaryDirectory() as td:
     binary = pathlib.Path(td) / "command-runtime"
-    cmd = [compiler, "-std=c++20", "-Wall", "-Wextra", "-Werror", str(source),
-           "-I", str(include), "-I", str(clock), "-I", str(memory), "-o", str(binary)]
+    cmd = [compiler, "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror", str(source)]
+    for include_path in include_paths:
+        cmd.extend(["-I", str(include_path)])
+    cmd.extend(["-o", str(binary)])
     subprocess.run(cmd, check=True)
     subprocess.run([str(binary)], check=True)
 
