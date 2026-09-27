@@ -39,16 +39,17 @@ static_assert(std::is_same_v<C::Composition::WaitProvider<ApplicationArchitectur
 static_assert(!std::is_copy_constructible_v<C::Handle<Echo, Runtime>>);
 
 int main() {
+    const C::Duration noWait{};
     EchoHandler handler; FakeWaitProvider waits; CommandBootstrap bootstrap(handler, waits);
     auto& runtime = bootstrap.RuntimeInstance(); assert(bootstrap.Initialize());
     auto dispatch = runtime.Dispatch(EchoRequest{42}); assert(dispatch.Accepted()); auto handle = dispatch.TakeHandle();
-    assert(handle.WaitFor(C::Duration::NoWait()) == C::WaitResult::TimedOut);
+    assert(handle.WaitFor(noWait) == C::WaitResult::TimedOut);
     waits.NextWaitResult = T::BoundedWaitWakeResult::ProviderFailure;
-    assert(handle.WaitFor(C::Duration::NoWait()) == C::WaitResult::Interrupted);
+    assert(handle.WaitFor(noWait) == C::WaitResult::Interrupted);
     waits.NextWaitResult = T::BoundedWaitWakeResult::TimedOut;
     assert(runtime.ExecuteOne()); assert(waits.WakeCount == 1U);
-    assert(handle.WaitFor(C::Duration::NoWait()) == C::WaitResult::Terminal);
-    assert(handle.WaitFor(C::Duration::NoWait()) == C::WaitResult::Terminal);
+    assert(handle.WaitFor(noWait) == C::WaitResult::Terminal);
+    assert(handle.WaitFor(noWait) == C::WaitResult::Terminal);
     auto response = handle.TakeResponse(); assert(response.Status() == C::TakeResponseStatus::Taken); assert(response.Take().Value == 42);
     assert(handle.RequestCancellation() == C::CancellationRequestResult::TooLate);
 
@@ -56,10 +57,10 @@ int main() {
     assert(cancelled.RequestCancellation() == C::CancellationRequestResult::Requested);
     assert(waits.WakeCount == 2U);
     assert(cancelled.RequestCancellation() == C::CancellationRequestResult::TooLate);
-    assert(cancelled.WaitFor(C::Duration::NoWait()) == C::WaitResult::Terminal);
+    assert(cancelled.WaitFor(noWait) == C::WaitResult::Terminal);
 
     C::Handle<Echo, Runtime> invalid;
-    assert(invalid.WaitFor(C::Duration::NoWait()) == C::WaitResult::InvalidHandle);
+    assert(invalid.WaitFor(noWait) == C::WaitResult::InvalidHandle);
     assert(invalid.RequestCancellation() == C::CancellationRequestResult::InvalidHandle);
     assert(runtime.BeginQuiesce());
     auto rejected = runtime.Dispatch(EchoRequest{1}); assert(!rejected.Accepted()); assert(rejected.Failure() == C::DispatchFailure::RuntimeUnavailable);
