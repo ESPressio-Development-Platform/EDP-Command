@@ -8,6 +8,9 @@
 
 namespace ESPressio::Command {
 
+template<class TCommand, class TRuntime>
+class DispatchResult;
+
 template<class TResponse>
 class TakeResponseResult final {
     TakeResponseStatus _status;
