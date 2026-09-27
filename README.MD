@@ -16,10 +16,19 @@ The runtime is statically capacity planned. It performs no heap allocation and u
 
 EDP-Command does not depend on Transport, Serialisation or Security. Inbound adapters use `InboundAdmission`; outbound adapters receive narrow invocation/completion capabilities and retain their own correlation identity.
 
+## Dependencies
+
+```text
+EDP-Command
+  +-- EDP-Memory   typed object lifetime and ownership transfer
+  `-- EDP-Clock    canonical Duration / MonotonicTimestamp vocabulary
+```
+
+Both are mandatory production dependencies. There are currently no optional production dependencies. See [DEPENDENCY_GRAPH.MD](./DEPENDENCY_GRAPH.MD) for dependency ownership, deliberate non-dependencies and demo/build qualifications.
+
 ## Documentation
 
 - [Command Architecture Contract](./docs/COMMAND-ARCHITECTURE.MD) — durable lifecycle, ownership, deterministic resource, execution, cancellation and integration contracts.
-- [Dependency Graph](./DEPENDENCY_GRAPH.MD) — dependency ownership and direction.
 - [`wiki/`](./wiki/Home.md) — comprehensive internal developer/reference documentation.
 
 ## Repository acceptance
