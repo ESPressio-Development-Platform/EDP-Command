@@ -27,21 +27,43 @@ if missing:
 include_paths = [path / "src" for path in repositories.values()]
 
 
+def compile_command(source, output):
+    cmd = [compiler, "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror", str(source)]
+    for include_path in include_paths:
+        cmd.extend(["-I", str(include_path)])
+    cmd.extend(["-o", str(output)])
+    return cmd
+
+
 def compile_and_run(source_name, binary_name):
     source = root / "tests" / "host" / source_name
     with tempfile.TemporaryDirectory() as td:
         binary = pathlib.Path(td) / binary_name
-        cmd = [compiler, "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror", str(source)]
-        for include_path in include_paths:
-            cmd.extend(["-I", str(include_path)])
-        cmd.extend(["-o", str(binary)])
-        subprocess.run(cmd, check=True)
+        subprocess.run(compile_command(source, binary), check=True)
         subprocess.run([str(binary)], check=True)
+
+
+def require_compile_failure(source_name, label):
+    source = root / "tests" / "host" / source_name
+    with tempfile.TemporaryDirectory() as td:
+        binary = pathlib.Path(td) / "must-not-compile"
+        result = subprocess.run(
+            compile_command(source, binary),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if result.returncode == 0:
+            raise SystemExit(f"FAIL: {label} unexpectedly compiled")
+    print(f"PASS: {label}")
 
 
 compile_and_run("command_runtime.cpp", "command-runtime")
 print("PASS: host lifecycle contract")
 print("Compile-time invalid-plan contracts are enforced by ResourcePlan static_asserts.")
+
+require_compile_failure("invalid_missing_handler.cpp", "missing handler rejected at compile time")
+require_compile_failure("invalid_duplicate_handler.cpp", "duplicate handler rejected at compile time")
 
 compile_and_run("resource_measurement.cpp", "command-resource-measurement")
 print("PASS: deterministic host resource measurement")
