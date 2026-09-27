@@ -1,16 +1,18 @@
 # EDP-Command Dependency Graph
 
-Direct architectural dependencies:
+Current mandatory production dependencies:
 
 ```text
 EDP-Command
-  +-- EDP-Memory      typed object lifetime and ownership transfer
-  +-- EDP-Clock       canonical Duration / MonotonicTimestamp vocabulary
-  +-- EDP-Threading   bounded wait/wake capability used by asynchronous Handle waiting
-  `-- EDP-System      Composition/topology integration contract
+  +-- EDP-Memory   typed object lifetime and ownership transfer
+  `-- EDP-Clock    canonical Duration / MonotonicTimestamp vocabulary
 ```
 
-The current local-runtime core directly includes Memory and Clock. Threading/System remain declared architectural dependencies for wait/provider composition as those provider bindings are integrated.
+EDP-Memory is directly consumed by Command request/response/result lifetime and transfer paths. EDP-Clock is directly consumed by `CommandTypes.hpp` for canonical time vocabulary.
+
+There are currently **no optional production dependencies**.
+
+The PlatformIO demo projects may name additional coherent sibling repositories needed by the selected framework/dependency chain; those are demo/build dependencies and are not Command production dependency edges.
 
 Explicit non-dependencies:
 
@@ -24,4 +26,4 @@ Transport / Serialisation / Security
           EDP-Command
 ```
 
-Those domains may depend toward Command through adapters. EDP-Command must not depend back toward them.
+Those domains may integrate toward Command through adapters. EDP-Command must not depend back toward them. EDP-Threading is likewise not a current Command package dependency: the implemented Runtime creates no threads and exposes no wait method. Any future Threading-backed waiting/execution integration must be introduced explicitly rather than documented as already present.
