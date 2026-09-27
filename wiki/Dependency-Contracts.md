@@ -8,9 +8,19 @@ Command consumes `ObjectLifetime` to construct/move/destroy Request and Response
 
 `CommandTypes.hpp` aliases EDP-Clock `Duration` and `MonotonicTimestamp`. Command does not select or own a clock provider in the implemented v1 Runtime; the dependency supplies canonical cross-domain time types without creating timing/scheduling ownership.
 
-## EDP-System / EDP-Platform
+## EDP-System — mandatory Composition/Architecture dependency
 
-These are present in package/build dependency metadata as part of the current coherent EDP dependency chain used by demos. The Command production headers do not acquire System/Platform provider ownership or use them to introduce Transport, Serialisation or Security.
+`Composition.hpp` defines the Command domain and exclusive per-Command Handler capability using EDP-System Composition Framework contracts. `Bootstrap.hpp` resolves exactly one same-domain Handler provider and exactly one external-domain bounded wait/wake provider from the immutable application Architecture. Command does not mutate topology after initialization.
+
+## EDP-Threading — mandatory external wait/wake dependency
+
+Command consumes the EDP-Threading `BoundedWaitWake` capability and its strongly typed `BoundedWaitWakeResult`. The application owns the concrete provider; Command Bootstrap borrows it after Architecture resolution. Provider `Capacity` must be at least the Command `ResourcePlan::InvocationCapacity`, ensuring every bounded invocation record has a corresponding wait/wake slot. Command uses this provider for finite non-consuming `WaitFor`/`WaitUntil` and terminal wake publication; it does not create threads or claim Threading scheduler ownership.
+
+EDP-Threading itself consumes EDP-Memory for its typed lifetime/ownership abstractions. Command must not bypass either abstraction with direct Standard Library ownership-transfer operations.
+
+## EDP-Platform — demo/concrete-provider dependency, not Command ownership
+
+PlatformIO/Arduino demonstrations use EDP-Platform FreeRTOS synchronization as the concrete provider underlying EDP-Threading `BoundedWaitWakeProvider`. This is an application/demo Composition choice rather than a new Command-domain provider ownership contract.
 
 ## Deliberate non-dependencies
 
