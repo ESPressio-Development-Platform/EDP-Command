@@ -15,8 +15,8 @@ enum class InvocationState : std::uint8_t { Queued, Executing, Completed, Cancel
 enum class CompletionStatus : std::uint8_t { Succeeded, Rejected, Failed };
 enum class ExecutionFailure : std::uint8_t { ExecutorFailure, IntegrationFailure };
 enum class DispatchFailure : std::uint8_t { NoCapacity, TypeUnrecognised, RuntimeUnavailable, BindingUnavailable };
-enum class WaitResult : std::uint8_t { Finished, TimedOut, InvalidHandle, ProviderFailure };
-enum class CancellationRequestResult : std::uint8_t { Accepted, AlreadyRequested, AlreadyTerminal, InvalidHandle };
+enum class WaitResult : std::uint8_t { Terminal, TimedOut, Interrupted, InvalidHandle };
+enum class CancellationRequestResult : std::uint8_t { Requested, AlreadyRequested, TooLate, InvalidHandle };
 enum class TakeResponseStatus : std::uint8_t { Taken, NotTerminal, NoResponse, AlreadyTaken, InvalidHandle };
 enum class RuntimeState : std::uint8_t { Uninitialized, Running, Quiescing, Quiescent };
 
