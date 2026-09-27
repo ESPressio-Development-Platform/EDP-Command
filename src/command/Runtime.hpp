@@ -32,7 +32,7 @@ private:
         static constexpr std::size_t ResponseAlignment = std::is_void_v<ResponseType> ? 1U : alignof(ResponseType);
         alignas(ResponseAlignment) std::byte ResponseStorage[ResponseBytes];
         InvocationState State{InvocationState::Queued};
-        CompletionStatus Completion{CompletionStatus::Succeeded};
+        Outcome TerminalOutcome{Outcome::Succeeded};
         ExecutionFailure Failure{ExecutionFailure::ExecutorFailure};
         std::uint32_t Generation{0U};
         bool Occupied{false};
@@ -87,11 +87,7 @@ private:
     [[nodiscard]] WaitResult Wait(std::size_t index, std::uint32_t generation, TWaitOperation operation) noexcept {
         if (!Matches(index, generation)) return WaitResult::InvalidHandle;
         if (IsTerminal(_records[index].State)) return WaitResult::Terminal;
-
         const auto waitResult = operation(index);
-
-        // Authoritative state is re-observed after every provider return. A terminal
-        // transition therefore wins a simultaneous wake/timeout/provider-failure race.
         if (!Matches(index, generation)) return WaitResult::InvalidHandle;
         if (IsTerminal(_records[index].State)) return WaitResult::Terminal;
         if (waitResult == ESPressio::Threading::BoundedWaitWakeResult::TimedOut) return WaitResult::TimedOut;
@@ -148,6 +144,7 @@ public:
         if (!record.Occupied || record.State != InvocationState::Queued) return false;
         if (record.CancellationRequested) {
             record.State = InvocationState::Cancelled;
+            record.TerminalOutcome = Outcome::Cancelled;
             WakeTerminal(index);
             ReclaimIfPossible(index);
             return true;
@@ -158,11 +155,14 @@ public:
         CancellationToken cancellation(record.CancellationRequested);
         auto result = _handler->Execute(request, cancellation);
         --_executing;
-        if (record.CancellationRequested) record.State = InvocationState::Cancelled;
-        else {
-            record.Completion = result.Status(); record.Failure = result.Failure();
+        if (record.CancellationRequested) {
+            record.State = InvocationState::Cancelled;
+            record.TerminalOutcome = Outcome::Cancelled;
+        } else {
+            record.TerminalOutcome = result.GetOutcome();
+            record.Failure = result.Failure();
             if constexpr (!std::is_void_v<ResponseType>) {
-                if (result.Status() != CompletionStatus::Failed && result.HasResponse()) {
+                if (result.GetOutcome() != Outcome::Failed && result.HasResponse()) {
                     auto response = result.TakeResponse();
                     static_cast<void>(ESPressio::Memory::ObjectLifetime::MoveConstruct<ResponseType>(record.ResponseStorage, response));
                     record.ResponseLive = true;
@@ -176,11 +176,16 @@ public:
     }
 
     [[nodiscard]] InvocationObservation Observe(std::size_t index, std::uint32_t generation, bool& valid) const noexcept {
-        valid = Matches(index, generation); if (!valid) return {};
-        const auto& record = _records[index]; InvocationObservation observation{}; observation.State = record.State;
-        if (record.State == InvocationState::Completed) {
-            observation.HasCompletion = true; observation.Completion = record.Completion;
-            observation.HasFailure = record.Completion == CompletionStatus::Failed; observation.Failure = record.Failure;
+        valid = Matches(index, generation);
+        if (!valid) return {};
+        const auto& record = _records[index];
+        InvocationObservation observation{};
+        observation.State = record.State;
+        if (IsTerminal(record.State)) {
+            observation.HasOutcome = true;
+            observation.TerminalOutcome = record.TerminalOutcome;
+            observation.HasFailure = record.TerminalOutcome == Outcome::Failed;
+            observation.Failure = record.Failure;
         }
         return observation;
     }
@@ -200,6 +205,7 @@ public:
         record.CancellationRequested = true;
         if (record.State == InvocationState::Queued) {
             record.State = InvocationState::Cancelled;
+            record.TerminalOutcome = Outcome::Cancelled;
             WakeTerminal(index);
         }
         return CancellationRequestResult::Requested;
