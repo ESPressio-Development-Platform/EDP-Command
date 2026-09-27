@@ -2,13 +2,15 @@
 
 ## Runtime Record
 
-`Runtime::Record` is **PRIVATE IMPLEMENTATION**. `RequestStorage` and `ResponseStorage` are aligned raw storage owned by the slot. `RequestLive`/`ResponseLive` are authoritative lifetime flags and must exactly match whether a live object exists. `ResponseTaken` enforces at-most-once extraction. `Occupied` controls slot availability. `HandleRetained` deliberately prevents terminal reclamation while a Handle may still observe/extract. `CancellationRequested` is cooperative cancellation state. `Generation` changes on reuse and must never be zero after admission, preventing stale Handle aliasing. `State`, `Completion`, `Failure` hold observable lifecycle/result state.
+`Runtime::Record` is **PRIVATE IMPLEMENTATION**. `RequestStorage` and `ResponseStorage` are aligned raw storage owned by the slot. `RequestLive`/`ResponseLive` are authoritative lifetime flags and must exactly match whether a live object exists. `ResponseTaken` enforces at-most-once extraction. `Occupied` controls slot availability. `HandleRetained` deliberately prevents terminal reclamation while a Handle may still observe/extract. `CancellationRequested` is cooperative cancellation state. `Generation` changes on reuse and must never be zero after admission, preventing stale Handle aliasing. `State`, `TerminalOutcome`, and `Failure` hold observable lifecycle/result state.
 
-## Runtime queue and counters
+## Runtime queue, counters and provider bindings
 
-`_records` owns all invocation storage. `_queue` is a bounded ring of record indices; for a zero queue capacity the physical array still has one inert element to keep the C++ type well-formed. `_queueHead`, `_queueTail`, `_queueCount` are ring bookkeeping. `_executing` enforces the configured concurrency bound. `_state` owns Runtime lifecycle. `_executor` is a borrowed pointer whose pointee must outlive Runtime use.
+`_records` owns all invocation storage. `_queue` is a bounded ring of record indices; for a zero queue capacity the physical array still has one inert element to keep the C++ type well-formed. `_queueHead`, `_queueTail`, `_queueCount` are ring bookkeeping. `_executing` enforces the configured concurrency bound. `_state` owns Runtime lifecycle. `_handler` and `_waitProvider` are borrowed pointers whose pointees must outlive Runtime use.
 
-`Matches` validates occupied slot plus generation. `ActiveCount` counts occupied records, including terminal records retained by Handles. `ReclaimIfPossible` is the central lifetime/reclamation gate: only terminal, unretained records may be destroyed/freed; it also completes Quiescing→Quiescent when the last occupied record disappears.
+`Matches` validates occupied slot plus generation. `ActiveCount` counts occupied records, including terminal records retained by Handles. `ReclaimIfPossible` is the central lifetime/reclamation gate: only terminal, unretained records may be destroyed/freed; it also completes `Quiescing` → `Quiescent` when the last occupied record disappears. `WakeTerminal` delegates terminal wake publication to the external EDP-Threading bounded wait/wake provider.
+
+The private `Wait` helper validates the Handle identity before waiting, performs the finite provider wait, then revalidates identity and terminal state. This ordering enforces the locked rule that terminal state wins timeout/interruption races.
 
 ## Handle internals
 
@@ -20,8 +22,8 @@
 
 ## ExecutionResult internals
 
-For non-void Response, `_response` is an optional owning result payload. `_status` and `_failure` preserve completion vocabulary. Failure currently maps to `ExecutorFailure`; integration failure is produced by outbound integration capability rather than Executor result.
+For non-void Response, `_response` is an optional owning result payload. `_outcome` stores semantic terminal `Outcome`; `_failure` stores failure detail independently. `Failed()` currently maps to `ExecutorFailure`; integration failure is produced by outbound integration capability rather than Handler execution result.
 
 ## OutboundCompletion internals
 
-`_context` and callback pointers are borrowed adapter state; `_used` is the authoritative exactly-once latch. It is set before invoking a callback, so even a callback returning false consumes the completion attempt. This prevents retry from becoming duplicate terminal publication.
+`_context` and callback pointers are borrowed adapter state; `_used` is the authoritative exactly-once latch. It is set before invoking a callback, so even a callback returning a non-success `CompletionPublicationResult` consumes the completion attempt. This prevents retry from becoming duplicate terminal publication. Callback operational status is deliberately separate from the semantic `Outcome` being published.
