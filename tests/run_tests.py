@@ -16,6 +16,7 @@ repositories = {
     "EDP-Memory": workspace / "EDP-Memory",
     "EDP-System": workspace / "EDP-System",
     "EDP-Platform": workspace / "EDP-Platform",
+    "EDP-Threading": workspace / "EDP-Threading",
 }
 
 missing = [name for name, path in repositories.items() if not (path / "src").is_dir()]
