@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <ESPressio_Command.hpp>
 
@@ -17,9 +18,11 @@ void Measure(const char* name) {
 }
 
 int main() {
-    Measure<1U, 1U, 1U>("minimum");
+    // ResourcePlan requires QueueCapacity + ExecutionConcurrency <= InvocationCapacity.
+    // Keep each measured configuration valid while scaling the bounded topology.
+    Measure<2U, 1U, 1U>("minimum");
     Measure<4U, 3U, 1U>("small");
-    Measure<8U, 8U, 2U>("representative");
-    Measure<16U, 16U, 4U>("high");
+    Measure<10U, 8U, 2U>("representative");
+    Measure<20U, 16U, 4U>("high");
     return 0;
 }
