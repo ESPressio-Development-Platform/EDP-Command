@@ -20,6 +20,9 @@ enum class CancellationRequestResult : std::uint8_t { Requested = 0U, AlreadyReq
 enum class TakeResponseStatus : std::uint8_t { Taken = 0U, NotTerminal = 1U, NoResponse = 2U, AlreadyTaken = 3U, InvalidHandle = 4U };
 enum class CompletionPublicationResult : std::uint8_t { Accepted = 0U, AlreadyCompleted = 1U, Unavailable = 2U };
 enum class RuntimeState : std::uint8_t { Uninitialized = 0U, Running = 1U, Quiescing = 2U, Quiescent = 3U };
+enum class InitializationResult : std::uint8_t { Initialized = 0U, AlreadyInitialized = 1U };
+enum class ExecutionAttemptResult : std::uint8_t { Executed = 0U, NotExecuted = 1U };
+enum class QuiesceResult : std::uint8_t { Started = 0U, NotRunning = 1U };
 
 struct InvocationObservation final {
     InvocationState State{InvocationState::Queued};
