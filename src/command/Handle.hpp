@@ -9,9 +9,20 @@
 #include "CommandTypes.hpp"
 
 namespace ESPressio::Command {
+    /**
+     * @brief Forward declaration of the typed dispatch operation result.
+     *
+     * @tparam TCommand Command type represented by the dispatch.
+     * @tparam TRuntime Runtime type owning the admitted invocation.
+     */
     template<class TCommand, class TRuntime>
     class DispatchResult;
 
+    /**
+     * @brief Move-only owner for a Response extracted from a terminal invocation.
+     *
+     * @tparam TResponse Response type stored by the result.
+     */
     template<class TResponse>
     class TakeResponseResult final {
     private:
@@ -20,6 +31,9 @@ namespace ESPressio::Command {
         bool _live{false};
 
     public:
+        /**
+         * @brief Creates a response-extraction result with no live Response.
+         */
         explicit TakeResponseResult(TakeResponseStatus status) noexcept :
             _status(status) {
         }
@@ -27,39 +41,69 @@ namespace ESPressio::Command {
         TakeResponseResult(const TakeResponseResult&) = delete;
         TakeResponseResult& operator=(const TakeResponseResult&) = delete;
 
+        /**
+         * @brief Transfers any embedded Response from another result.
+         */
         TakeResponseResult(TakeResponseResult&& other) noexcept :
             _status(other._status) {
             if (other._live) {
                 auto& value = *reinterpret_cast<TResponse*>(other._storage);
-                static_cast<void>(ESPressio::Memory::ObjectLifetime::MoveConstruct<TResponse>(_storage, value));
+                static_cast<void>(
+                    ESPressio::Memory::ObjectLifetime::MoveConstruct<TResponse>(
+                        _storage,
+                        value
+                    )
+                );
                 ESPressio::Memory::ObjectLifetime::Destroy(value);
                 _live = true;
                 other._live = false;
             }
         }
 
+        /**
+         * @brief Destroys any Response still retained by this result.
+         */
         ~TakeResponseResult() {
             if (_live) {
-                ESPressio::Memory::ObjectLifetime::Destroy(*reinterpret_cast<TResponse*>(_storage));
+                ESPressio::Memory::ObjectLifetime::Destroy(
+                    *reinterpret_cast<TResponse*>(_storage)
+                );
             }
         }
 
+        /**
+         * @brief Returns the operational extraction status.
+         */
         [[nodiscard]] TakeResponseStatus Status() const noexcept {
             return _status;
         }
 
+        /**
+         * @brief Reports whether this result currently owns a Response value.
+         */
         [[nodiscard]] bool HasValue() const noexcept {
             return _live;
         }
 
+        /**
+         * @brief Marks the embedded storage as containing a live Response.
+         *
+         * A valid TResponse must already have been constructed in Storage().
+         */
         void MarkLive() noexcept {
             _live = true;
         }
 
+        /**
+         * @brief Returns raw storage used by the Runtime extraction path.
+         */
         [[nodiscard]] void* Storage() noexcept {
             return _storage;
         }
 
+        /**
+         * @brief Transfers the embedded Response to the caller.
+         */
         TResponse Take() noexcept {
             auto& value = *reinterpret_cast<TResponse*>(_storage);
             TResponse result(ESPressio::Memory::OwnershipTransfer::Move(value));
@@ -69,6 +113,12 @@ namespace ESPressio::Command {
         }
     };
 
+    /**
+     * @brief Exclusive move-only capability for one admitted Command invocation.
+     *
+     * @tparam TCommand Command type represented by the invocation.
+     * @tparam TRuntime Runtime type owning the invocation record.
+     */
     template<class TCommand, class TRuntime>
     class Handle final {
     private:
@@ -78,7 +128,14 @@ namespace ESPressio::Command {
 
         friend class DispatchResult<TCommand, TRuntime>;
 
-        Handle(TRuntime& runtime, std::size_t index, std::uint32_t generation) noexcept :
+        /**
+         * @brief Creates a retained Handle for a successful dispatch.
+         */
+        Handle(
+            TRuntime& runtime,
+            std::size_t index,
+            std::uint32_t generation
+        ) noexcept :
             _runtime(&runtime),
             _index(index),
             _generation(generation) {
@@ -89,6 +146,9 @@ namespace ESPressio::Command {
         Handle(const Handle&) = delete;
         Handle& operator=(const Handle&) = delete;
 
+        /**
+         * @brief Transfers exclusive invocation retention from another Handle.
+         */
         Handle(Handle&& other) noexcept :
             _runtime(other._runtime),
             _index(other._index),
@@ -96,6 +156,9 @@ namespace ESPressio::Command {
             other._runtime = nullptr;
         }
 
+        /**
+         * @brief Releases any current invocation then transfers another Handle.
+         */
         Handle& operator=(Handle&& other) noexcept {
             if (this == &other) {
                 return *this;
@@ -109,10 +172,16 @@ namespace ESPressio::Command {
             return *this;
         }
 
+        /**
+         * @brief Releases this Handle's invocation retention.
+         */
         ~Handle() {
             Release();
         }
 
+        /**
+         * @brief Reports whether this Handle still identifies a live Runtime record.
+         */
         [[nodiscard]] bool IsValid() const noexcept {
             if (_runtime == nullptr) {
                 return false;
@@ -123,6 +192,11 @@ namespace ESPressio::Command {
             return valid;
         }
 
+        /**
+         * @brief Returns a value snapshot of the invocation state.
+         *
+         * @param valid Receives whether the Handle identity was valid.
+         */
         [[nodiscard]] InvocationObservation State(bool& valid) const noexcept {
             if (_runtime == nullptr) {
                 valid = false;
@@ -132,24 +206,38 @@ namespace ESPressio::Command {
             return _runtime->Observe(_index, _generation, valid);
         }
 
+        /**
+         * @brief Waits for at most the supplied finite duration.
+         */
         [[nodiscard]] WaitResult WaitFor(Duration duration) noexcept {
             return _runtime == nullptr
                 ? WaitResult::InvalidHandle
                 : _runtime->WaitFor(_index, _generation, duration);
         }
 
+        /**
+         * @brief Waits until the supplied finite monotonic deadline.
+         */
         [[nodiscard]] WaitResult WaitUntil(MonotonicTimestamp deadline) noexcept {
             return _runtime == nullptr
                 ? WaitResult::InvalidHandle
                 : _runtime->WaitUntil(_index, _generation, deadline);
         }
 
+        /**
+         * @brief Requests cooperative cancellation of the invocation.
+         */
         [[nodiscard]] CancellationRequestResult RequestCancellation() noexcept {
             return _runtime == nullptr
                 ? CancellationRequestResult::InvalidHandle
                 : _runtime->RequestCancellation(_index, _generation);
         }
 
+        /**
+         * @brief Extracts a non-void Response from a terminal invocation.
+         *
+         * @tparam R Response type selected from TCommand.
+         */
         template<class R = Response<TCommand>>
         requires (!std::is_void_v<R>)
         [[nodiscard]] TakeResponseResult<R> TakeResponse() noexcept {
@@ -158,12 +246,21 @@ namespace ESPressio::Command {
             }
 
             alignas(R) std::byte temporary[sizeof(R)];
-            const auto status = _runtime->template TakeResponse<R>(_index, _generation, temporary);
+            const auto status = _runtime->template TakeResponse<R>(
+                _index,
+                _generation,
+                temporary
+            );
             TakeResponseResult<R> result(status);
 
             if (status == TakeResponseStatus::Taken) {
                 auto& value = *reinterpret_cast<R*>(temporary);
-                static_cast<void>(ESPressio::Memory::ObjectLifetime::MoveConstruct<R>(result.Storage(), value));
+                static_cast<void>(
+                    ESPressio::Memory::ObjectLifetime::MoveConstruct<R>(
+                        result.Storage(),
+                        value
+                    )
+                );
                 ESPressio::Memory::ObjectLifetime::Destroy(value);
                 result.MarkLive();
             }
@@ -171,6 +268,9 @@ namespace ESPressio::Command {
             return result;
         }
 
+        /**
+         * @brief Releases invocation retention and invalidates this Handle.
+         */
         void Release() noexcept {
             if (_runtime == nullptr) {
                 return;
@@ -181,6 +281,12 @@ namespace ESPressio::Command {
         }
     };
 
+    /**
+     * @brief Move-only result of attempting to dispatch a typed Command.
+     *
+     * @tparam TCommand Command type represented by the dispatch.
+     * @tparam TRuntime Runtime type owning a successfully admitted invocation.
+     */
     template<class TCommand, class TRuntime>
     class DispatchResult final {
     private:
@@ -189,11 +295,21 @@ namespace ESPressio::Command {
         Handle<TCommand, TRuntime> _handle{};
 
     public:
+        /**
+         * @brief Creates a rejected dispatch result.
+         */
         explicit DispatchResult(DispatchFailure failure) noexcept :
             _failure(failure) {
         }
 
-        DispatchResult(TRuntime& runtime, std::size_t index, std::uint32_t generation) noexcept :
+        /**
+         * @brief Creates an accepted dispatch result retaining its Handle.
+         */
+        DispatchResult(
+            TRuntime& runtime,
+            std::size_t index,
+            std::uint32_t generation
+        ) noexcept :
             _accepted(true),
             _handle(runtime, index, generation) {
         }
@@ -202,14 +318,23 @@ namespace ESPressio::Command {
         DispatchResult& operator=(const DispatchResult&) = delete;
         DispatchResult(DispatchResult&&) noexcept = default;
 
+        /**
+         * @brief Reports whether dispatch admitted an invocation.
+         */
         [[nodiscard]] bool Accepted() const noexcept {
             return _accepted;
         }
 
+        /**
+         * @brief Returns the rejection reason when dispatch was not accepted.
+         */
         [[nodiscard]] DispatchFailure Failure() const noexcept {
             return _failure;
         }
 
+        /**
+         * @brief Transfers the exclusive Handle for an accepted invocation.
+         */
         Handle<TCommand, TRuntime> TakeHandle() noexcept {
             return ESPressio::Memory::OwnershipTransfer::Move(_handle);
         }
