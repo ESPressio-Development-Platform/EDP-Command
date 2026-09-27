@@ -16,6 +16,7 @@ repositories = {
     "EDP-Memory": workspace / "EDP-Memory",
     "EDP-System": workspace / "EDP-System",
     "EDP-Platform": workspace / "EDP-Platform",
+    "EDP-BoundedTopology": workspace / "EDP-BoundedTopology",
     "EDP-Threading": workspace / "EDP-Threading",
 }
 
