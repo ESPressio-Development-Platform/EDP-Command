@@ -4,11 +4,13 @@
 
 A Command type exposes an exclusive `Handler<TCommand>` capability in the Command domain. A valid EDP-System Architecture supplies exactly one such Handler and exactly one external `EDP-Threading::BoundedWaitWake` provider. `Bootstrap<TCommand, TArchitecture, TPlan>` resolves and borrows those application-owned providers and establishes Runtime wiring. Wait-provider capacity must cover every planned invocation slot. The topology is immutable after initialization.
 
-## Lifecycle
+## Lifecycle and outcome
 
 Dispatch is immediate and transactional. Before Handle publication the runtime reserves bounded admission resources and establishes the Request. Failure before commitment leaves no observable invocation.
 
-Accepted lifecycle: `Queued -> Executing -> Completed`, with cancellation able to terminate as `Cancelled`. There is no `Failed` lifecycle state. Completed carries `Succeeded`, `Rejected`, or `Failed`; failed completion carries only `ExecutorFailure` or `IntegrationFailure` in the Command domain.
+Accepted lifecycle is `Queued -> Executing -> Completed`, with cancellation able to terminate as `Cancelled`. There is no `Failed` lifecycle state. Lifecycle and semantic terminal outcome are separate dimensions: every terminal invocation exposes one `Outcome` of `Succeeded`, `Rejected`, `Failed`, or `Cancelled`. Cancellation therefore remains the distinct `InvocationState::Cancelled` lifecycle state while also exposing `Outcome::Cancelled`. Failed outcome detail is limited to `ExecutorFailure` or `IntegrationFailure` in the Command domain.
+
+`InvocationObservation` exposes the genuine state predicates `DidSucceed()`, `WasRejected()`, `DidFail()`, and `WasCancelled()`.
 
 ## Handle, waiting and ownership
 
@@ -24,14 +26,18 @@ Invocation records and queues are fixed-capacity. Requests and Responses are est
 
 Cancellation is cooperative for executing work and immediate for queued work. Terminal completion/cancellation wakes the invocation's Threading wait slot. `RequestCancellation` reports `Requested`, `AlreadyRequested`, `TooLate`, or `InvalidHandle`. Transport failure is never represented as cancellation.
 
+## Typed operation results
+
+Fallible operations do not use Boolean success/failure. Runtime initialization, execution attempts, quiescing, cancellation requests, waits, response extraction and integration completion publication each expose dedicated strongly typed result vocabularies. Boolean APIs are retained only where they are genuine predicates.
+
 ## Shutdown
 
 `BeginQuiesce` stops new admission. Existing invocations remain observable. Complete reclamation may be delayed by retained Handles.
 
 ## Integration
 
-Inbound adapters use the same local bounded admission semantics. Outbound adapters receive only Request/cancellation/completion capabilities. Detailed Transport/codec/security failures remain owned by those domains.
+Inbound adapters use the same local bounded admission semantics. Outbound adapters receive only Request/cancellation/completion capabilities. Detailed Transport/codec/security failures remain owned by those domains. `CompletionPublicationResult` reports whether an attempted terminal publication was `Accepted`, `AlreadyCompleted`, or `Unavailable`; it is deliberately separate from the invocation's semantic `Outcome`.
 
 ## Determinism
 
-Capacity is compile-time planned. No admission wait exists. Back-pressure/retry belongs above Command. Terminal publication is one-way and duplicate integration completion is rejected. The measured Command Runtime cost of adding external finite-wait support is one pointer (+8 bytes on the accepted host measurements), independent of invocation capacity; external Threading storage is separately owned and planned.
+Capacity is compile-time planned. No admission wait exists. Back-pressure/retry belongs above Command. Terminal publication is one-way and duplicate integration completion is rejected. The pre-H16 measured Command Runtime cost of adding external finite-wait support was one pointer (+8 bytes on the accepted host measurements), independent of invocation capacity; external Threading storage is separately owned and planned. Final H16 regression must remeasure the Runtime before those figures are treated as current.
