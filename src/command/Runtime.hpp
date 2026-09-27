@@ -34,6 +34,17 @@ namespace ESPressio::Command {
     requires CommandType<TCommand>
     class Runtime final {
     private:
+        // Private Runtime type vocabulary used by storage declarations.
+
+        /// Request type declared by the Command.
+        using RequestType = Request<TCommand>;
+
+        /// Response type declared by the Command.
+        using ResponseType = Response<TCommand>;
+
+        /// Compile-time ResourcePlan applied to this Runtime.
+        using Plan = TPlan;
+
         // Invocation record storage and lifecycle state.
 
         /// Fixed storage and observable state for one invocation slot.
@@ -204,15 +215,6 @@ namespace ESPressio::Command {
 
         /// Command declaration executed by this Runtime.
         using Command = TCommand;
-
-        /// Request type declared by the Command.
-        using RequestType = Request<TCommand>;
-
-        /// Response type declared by the Command.
-        using ResponseType = Response<TCommand>;
-
-        /// Compile-time ResourcePlan applied to this Runtime.
-        using Plan = TPlan;
 
         // Construction and lifecycle.
 
