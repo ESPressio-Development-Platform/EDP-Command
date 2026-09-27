@@ -28,6 +28,8 @@ All declarations below are **PUBLIC API** unless explicitly stated otherwise. So
 
 `RuntimeState`: `Uninitialized`, `Running`, `Quiescing`, `Quiescent`.
 
+`LocalOnly`, `RemoteOnly`, and `LocalAndRemote` are empty compile-time F4 execution-domain Dispatch policy Types. `ExecutionDomainScope<TScope>` is satisfied only by those policy Types (including cv/ref-qualified forms). Scope is Dispatch control metadata and is not Request/schema/wire state.
+
 `InvocationObservation` is a value snapshot. `State` always describes lifecycle. `HasOutcome` gates `TerminalOutcome`; `HasFailure` gates `Failure`. `DidSucceed()`, `WasRejected()`, `DidFail()` and `WasCancelled()` are genuine Boolean predicates over terminal outcome state. Default outcome/failure values are placeholders unless their corresponding presence flag is true.
 
 `Request<TCommand>` / `Response<TCommand>` select nested request/response types. `CommandType` requires both nested types. `Duration` and `MonotonicTimestamp` preserve EDP-Clock vocabulary.
@@ -58,6 +60,12 @@ Fixed-storage Command engine. Constructor borrows the resolved Handler and bound
 
 Runtime does not allocate, create threads, or claim concurrent-call thread safety. Handler `Execute(request,cancellation)` must be non-throwing in the architectural contract.
 
+## Execution-domain scope API
+
+`DispatchScoped(LocalOnly{}, localOperation)` invokes the already-selected non-throwing local operation exactly once and returns its non-void result directly. `DispatchScoped(RemoteOnly{}, remoteOperation)` invokes only the already-selected higher-layer remote operation and returns its non-void result directly; it creates no local Runtime admission or local `DispatchResult`.
+
+`DispatchScoped(LocalAndRemote{}, localOperation, remoteOperation)` invokes both non-throwing operations independently. It returns move-capable `LocalAndRemoteDispatchResult<TLocalResult,TRemoteResult>`, whose `Local()` and `Remote()` accessors expose the two outcomes independently. There is deliberately no aggregate success predicate, fallback, rollback, suppression, quorum or ordering semantic. The operation callables own/preselect their domain-specific inputs; the coordinator does not accept or duplicate a Request.
+
 ## Composition and Bootstrap
 
 `Composition::Handler<TCommand>` is the exclusive Command-domain capability for one Command type. `HandlerRequirement<TCommand>` requires exactly one same-domain provider. `WaitProviderRequirement` requires exactly one external-domain `EDP-Threading::BoundedWaitWake` provider.
@@ -66,7 +74,7 @@ Runtime does not allocate, create threads, or claim concurrent-call thread safet
 
 ## Integration API
 
-`InboundAdmission<TCommand,TRuntime>` borrows a Runtime and forwards typed Request ownership into `Dispatch`; external correlation remains adapter-owned.
+`InboundAdmission<TCommand,TRuntime>` borrows a Runtime and forwards typed Request ownership into local `Dispatch`; external correlation remains adapter-owned. The existing `Dispatch(request)` shorthand and explicit `Dispatch(LocalOnly{}, request)` overload have the same local-only semantics. Remote scopes are intentionally not accepted by this local admission facade.
 
 `OutboundCompletion<TResponse>` is semantically exactly-once. Callback aliases define non-throwing function-pointer contracts. `Succeeded`, `Rejected`, `Failed`, `Cancelled` consume the capability on the first publication attempt and return `CompletionPublicationResult`; later attempts report `AlreadyCompleted`. A missing applicable callback reports `Unavailable`. The `void` specialization has the same contract without Response payload.
 

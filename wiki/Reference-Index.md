@@ -8,7 +8,7 @@ This is the exhaustive production-source reference index for the current `src` s
 
 ## `src/command/CommandTypes.hpp`
 
-**PUBLIC API.** Defines/aliases `Duration`, `MonotonicTimestamp`; `InvocationState`, `Outcome`, `ExecutionFailure`, `DispatchFailure`, `WaitResult`, `CancellationRequestResult`, `TakeResponseStatus`, `CompletionPublicationResult`, `InitializationResult`, `ExecutionAttemptResult`, `QuiesceResult`, `RuntimeState` and their explicit values; `InvocationObservation` and its lifecycle/outcome/failure fields plus terminal predicates; `Request<TCommand>`, `Response<TCommand>`, `CommandType`; `CancellationToken`; and `ExecutionResult<TResponse>` / `ExecutionResult<void>`. See [Public API](Public-API) and [Private Implementation](Private-Implementation).
+**PUBLIC API.** Defines/aliases `Duration`, `MonotonicTimestamp`; `InvocationState`, `Outcome`, `ExecutionFailure`, `DispatchFailure`, `WaitResult`, `CancellationRequestResult`, `TakeResponseStatus`, `CompletionPublicationResult`, `InitializationResult`, `ExecutionAttemptResult`, `QuiesceResult`, `RuntimeState` and their explicit values; F4 scope policy Types `LocalOnly`, `RemoteOnly`, `LocalAndRemote` plus `ExecutionDomainScope`; `InvocationObservation` and its lifecycle/outcome/failure fields plus terminal predicates; `Request<TCommand>`, `Response<TCommand>`, `CommandType`; `CancellationToken`; and `ExecutionResult<TResponse>` / `ExecutionResult<void>`. See [Public API](Public-API) and [Private Implementation](Private-Implementation).
 
 ## `src/command/Composition.hpp`
 
@@ -32,7 +32,7 @@ This is the exhaustive production-source reference index for the current `src` s
 
 ## `src/command/Integration.hpp`
 
-**PUBLIC INTEGRATION API.** Defines `InboundAdmission<TCommand,TRuntime>` with borrowed `_runtime`, constructor and `Dispatch`; `OutboundCompletion<TResponse>` callback aliases, borrowed callback/context state, `_used` exactly-once latch, constructor and four typed terminal-publication methods; `OutboundCompletion<void>` equivalent response-less contract; and `OutboundInvocation<TCommand,TCompletion>` with `RequestView`, `Cancellation`, `Completion`. See [Public API](Public-API) and [Dependency Contracts](Dependency-Contracts).
+**PUBLIC INTEGRATION API.** Defines `InboundAdmission<TCommand,TRuntime>` with borrowed `_runtime`, shorthand local `Dispatch` and explicit `LocalOnly` Dispatch; move-capable `LocalAndRemoteDispatchResult<TLocalResult,TRemoteResult>`; `DispatchScoped` overloads for `LocalOnly`, `RemoteOnly` and `LocalAndRemote`; `OutboundCompletion<TResponse>` callback aliases, borrowed callback/context state, `_used` exactly-once latch, constructor and four typed terminal-publication methods; `OutboundCompletion<void>` equivalent response-less contract; and `OutboundInvocation<TCommand,TCompletion>` with `RequestView`, `Cancellation`, `Completion`. See [Public API](Public-API) and [Dependency Contracts](Dependency-Contracts).
 
 ## Reference coverage validation
 

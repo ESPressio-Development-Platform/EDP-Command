@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 import os
 import pathlib
+import shlex
 import subprocess
 import tempfile
 
 root = pathlib.Path(__file__).resolve().parents[1]
 workspace = root.parent
 compiler = os.environ.get("CXX", "c++")
+extra_cxxflags = shlex.split(os.environ.get("CXXFLAGS", ""))
 
 print("EDP-Command host contract and resource suite")
 
@@ -28,7 +30,9 @@ include_paths = [path / "src" for path in repositories.values()]
 
 
 def compile_command(source, output):
-    cmd = [compiler, "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror", str(source)]
+    cmd = [compiler, "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror"]
+    cmd.extend(extra_cxxflags)
+    cmd.append(str(source))
     for include_path in include_paths:
         cmd.extend(["-I", str(include_path)])
     cmd.extend(["-o", str(output)])
@@ -60,10 +64,16 @@ def require_compile_failure(source_name, label):
 
 compile_and_run("command_runtime.cpp", "command-runtime")
 print("PASS: host lifecycle contract")
+
+compile_and_run("execution_scope.cpp", "command-execution-scope")
+print("PASS: F4 execution-domain scope contract")
+
 print("Compile-time invalid-plan contracts are enforced by ResourcePlan static_asserts.")
 
 require_compile_failure("invalid_missing_handler.cpp", "missing handler rejected at compile time")
 require_compile_failure("invalid_duplicate_handler.cpp", "duplicate handler rejected at compile time")
+require_compile_failure("invalid_scope_void_operation.cpp", "void scoped operation rejected at compile time")
+require_compile_failure("invalid_scope_throwing_operation.cpp", "throwing scoped operation rejected at compile time")
 
 compile_and_run("resource_measurement.cpp", "command-resource-measurement")
 print("PASS: deterministic host resource measurement")

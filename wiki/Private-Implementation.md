@@ -27,3 +27,9 @@ For non-void Response, `_response` is an optional owning result payload. `_outco
 ## OutboundCompletion internals
 
 `_context` and callback pointers are borrowed adapter state; `_used` is the authoritative exactly-once latch. It is set before invoking a callback, so even a callback returning a non-success `CompletionPublicationResult` consumes the completion attempt. This prevents retry from becoming duplicate terminal publication. Callback operational status is deliberately separate from the semantic `Outcome` being published.
+
+## F4 scoped-dispatch internals
+
+`LocalOnly`, `RemoteOnly`, and `LocalAndRemote` are empty policy Types and introduce no retained state. `DispatchScoped` is header-only coordination over callables already selected by the higher integration/routing layer. It stores no Request, destination, provider or route. The `LocalAndRemoteDispatchResult` object owns only the two returned domain-result objects and has no continuing relationship with either invocation lifecycle.
+
+The concrete implementation currently invokes the local operation before the remote operation when constructing a combined result. That sequence is strictly an implementation detail: no application or integration may infer a cross-domain ordering contract from it. Both operations are required to be `noexcept` and non-`void`, enforced at compile time.

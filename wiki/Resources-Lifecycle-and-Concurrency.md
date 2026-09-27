@@ -17,3 +17,9 @@ Initialization is `Uninitialized` → `Running`. `Initialize` reports `Initializ
 Semantic terminal result is represented by `Outcome`, independent from lifecycle state. A cancelled invocation has `InvocationState::Cancelled` and `Outcome::Cancelled`; successful, rejected and failed invocations are lifecycle `Completed` with the corresponding terminal Outcome.
 
 Measured host `sizeof(Runtime)` fixtures on the first post-H16 regression gate on 2026-09-27 were: **112 bytes** for plan 2/1/1, **176 bytes** for 4/3/1, **360 bytes** for 10/8/2, and **664 bytes** for 20/16/4 with 4-byte Request/Response fixture types. These are validation measurements, not ABI guarantees for arbitrary Command/Handler/provider types.
+
+## F4 execution-domain scope resources
+
+F4 adds no `Runtime`, `ResourcePlan`, queue, invocation-record or Bootstrap storage. The scope policy Types are empty compile-time tags and `DispatchScoped` retains no state after the call. `LocalAndRemoteDispatchResult` is caller-owned return state containing only the independently produced local and remote result objects.
+
+The final F4 regression gate preserved the existing measured `sizeof(Runtime)` fixtures exactly at **112 / 176 / 360 / 664 bytes**, confirming zero retained Runtime RAM increase for the scope feature. Local and remote operation concurrency/lifecycle remains owned by the corresponding domains; `DispatchScoped` does not add synchronization or establish a cross-domain execution-order guarantee.

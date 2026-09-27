@@ -24,7 +24,7 @@ PlatformIO/Arduino demonstrations use EDP-Platform FreeRTOS synchronization as t
 
 ## Deliberate non-dependencies
 
-Transport, Serialisation and Security are intentionally absent. Inbound adapters retain remote correlation and use `InboundAdmission`; outbound integrations receive invocation-specific completion capability. This preserves dependency direction and keeps Command transport-agnostic.
+Transport, Serialisation and Security are intentionally absent. Inbound adapters retain remote correlation and use `InboundAdmission`; outbound integrations receive invocation-specific completion capability. F4 execution-domain scope adds no dependency: `DispatchScoped` coordinates caller-selected operations without defining Transport/provider/destination Types or a routing registry. This preserves dependency direction and keeps Command transport-agnostic.
 
 ## Test/demo dependencies
 

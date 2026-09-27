@@ -1,0 +1,79 @@
+name: Validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  host-contracts:
+    name: Host contracts (${{ matrix.compiler }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone sibling EDP dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          parent="$(dirname "$GITHUB_WORKSPACE")"
+          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading; do
+            git clone --depth 1 --branch main "https://github.com/ESPressio-Development-Platform/${repo}.git" "${parent}/${repo}"
+          done
+      - name: Run host contract suite
+        env:
+          CXX: ${{ matrix.compiler }}
+        run: python3 tests/run_tests.py
+
+  host-sanitizers:
+    name: Host sanitizers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone sibling EDP dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          parent="$(dirname "$GITHUB_WORKSPACE")"
+          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading; do
+            git clone --depth 1 --branch main "https://github.com/ESPressio-Development-Platform/${repo}.git" "${parent}/${repo}"
+          done
+      - name: Run ASan and UBSan host suite
+        env:
+          CXX: g++
+          CXXFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer
+        run: python3 tests/run_tests.py
+
+  platform-builds:
+    name: PlatformIO demos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install PlatformIO
+        run: python -m pip install platformio
+      - name: Clone sibling EDP dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          parent="$(dirname "$GITHUB_WORKSPACE")"
+          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-Platform-FreeRTOS EDP-BoundedTopology EDP-Threading; do
+            git clone --depth 1 --branch main "https://github.com/ESPressio-Development-Platform/${repo}.git" "${parent}/${repo}"
+          done
+      - name: Build CommandLifecycle Arduino
+        run: pio run -d demos/CommandLifecycle/PlatformIO_Arduino
+      - name: Build CommandLifecycle ESP-IDF
+        run: pio run -d demos/CommandLifecycle/PlatformIO_ESP-IDF
+      - name: Build FakeOutboundIntegration Arduino
+        run: pio run -d demos/FakeOutboundIntegration/PlatformIO_Arduino
+      - name: Build FakeOutboundIntegration ESP-IDF
+        run: pio run -d demos/FakeOutboundIntegration/PlatformIO_ESP-IDF
+      - name: Build ExecutionDomainScope Arduino
+        run: pio run -d demos/ExecutionDomainScope/PlatformIO_Arduino
+      - name: Build ExecutionDomainScope ESP-IDF
+        run: pio run -d demos/ExecutionDomainScope/PlatformIO_ESP-IDF

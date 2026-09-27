@@ -11,3 +11,9 @@ Handler is an application extension contract rather than a base-class API. `Runt
 The Runtime also borrows the Architecture-resolved EDP-Threading bounded wait/wake provider. Handle waits are finite and non-consuming. Runtime rechecks terminal state after the provider returns so terminal state wins timeout/interruption races.
 
 Inbound/outbound adapter implementations may consume `InboundAdmission` and `OutboundCompletion`; they must preserve adapter-owned correlation and exactly-once completion rather than adding Transport identity to Command. Semantic terminal `Outcome` is distinct from `CompletionPublicationResult`, which describes whether a publication attempt itself was accepted.
+
+## F4 scoped-dispatch coordination
+
+`DispatchScoped` is deliberately stateless glue between Command's compile-time scope policy and operations already selected by a higher integration/routing layer. It owns no routing table, provider reference, destination identity or Request. The callable boundary is significant: it avoids imposing copyability on Command Request Types when local and remote domains need independent ownership/materialization.
+
+All selected operations must be non-throwing and return a non-void domain outcome. `LocalAndRemoteDispatchResult` stores only those two returned results; it creates no continuing relationship between their lifecycles. The concrete invocation sequence is an implementation detail and is not an extension contract.

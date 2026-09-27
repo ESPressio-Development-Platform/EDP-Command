@@ -136,6 +136,14 @@ Cancellation request outcomes are `Requested`, `AlreadyRequested`, `TooLate`, an
 
 `NoCapacity`, `TypeUnrecognised`, `RuntimeUnavailable`, `BindingUnavailable`.
 
+## Per-call execution-domain scope
+
+The locked F4 integration policy is available through the compile-time `LocalOnly`, `RemoteOnly`, and `LocalAndRemote` scope Types. Ordinary `Runtime::Dispatch(request)` remains naturally local-only. Higher routing/integration code may use `DispatchScoped` to coordinate already-selected local and remote operations without giving Command responsibility for provider selection, destinations or Transport.
+
+`LocalOnly` and `RemoteOnly` preserve the scalar result returned by the selected domain operation. `LocalAndRemote` returns structurally separate `Local()` and `Remote()` outcomes with no aggregate success, rollback, fallback, suppression or cross-domain ordering semantic.
+
+See [Execution-Domain Dispatch Scope](./docs/EXECUTION-DOMAIN-SCOPE.MD) for the complete contract and the [`ExecutionDomainScope` demo](./demos/ExecutionDomainScope/README.MD).
+
 ## Integration boundary
 
 EDP-Command does not depend on Transport, Serialisation or Security. Inbound adapters use `InboundAdmission`; outbound adapters receive narrow invocation/completion capabilities and retain their own correlation identity. Completion publication is a fallible operation and returns `CompletionPublicationResult` (`Accepted`, `AlreadyCompleted`, or `Unavailable`) rather than a Boolean.
@@ -155,8 +163,9 @@ See [DEPENDENCY_GRAPH.MD](./DEPENDENCY_GRAPH.MD).
 ## Documentation
 
 - [Command Architecture Contract](./docs/COMMAND-ARCHITECTURE.MD)
+- [Execution-Domain Dispatch Scope](./docs/EXECUTION-DOMAIN-SCOPE.MD)
 - [`wiki/`](./wiki/Home.md)
 
 ## Repository acceptance
 
-`tests/run_tests.py` builds the host lifecycle/Architecture contract and deterministic resource-measurement suites. `demos/CommandLifecycle` exercises Composition/Architecture/Bootstrap, execution, finite terminal waiting, response extraction and quiescence. `demos/FakeOutboundIntegration` exercises exactly-once integration completion without inventing a Transport architecture.
+`tests/run_tests.py` builds the host lifecycle/Architecture contract, F4 execution-domain-scope contract, compile-time negative contracts and deterministic resource-measurement suites. `CXX` selects the host compiler and optional `CXXFLAGS` are appended for validation configurations such as sanitizers. `demos/CommandLifecycle` exercises Composition/Architecture/Bootstrap, execution, finite terminal waiting, response extraction and quiescence. `demos/FakeOutboundIntegration` exercises exactly-once integration completion without inventing a Transport architecture. `demos/ExecutionDomainScope` demonstrates independent local/remote scoped dispatch in every Policy-required target form. Representative GitHub Actions definitions live under `.github/workflows`, while current Policy makes RPI400 the authoritative executable validation appliance.

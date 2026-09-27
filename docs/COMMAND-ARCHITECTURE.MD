@@ -48,9 +48,17 @@ Fallible operations use dedicated strongly typed results rather than Boolean suc
 
 A Runtime starts `Uninitialized`; `Initialize` transitions once to `Running`. `BeginQuiesce` closes admission and transitions to `Quiescing` while retained/active records remain, then `Quiescent` after the last record can be reclaimed. No topology mutation or rebinding is introduced after initialization.
 
+## Execution-domain Dispatch scope
+
+F4 defines three compile-time per-call policy Types: `LocalOnly`, `RemoteOnly`, and `LocalAndRemote`. Scope is Dispatch control metadata rather than Request/schema/wire state. The core destination-free `Runtime::Dispatch(request)` remains naturally LocalOnly and therefore acquires no routing or Transport responsibility.
+
+Higher routing/integration code may use `DispatchScoped` after it has already selected the applicable operations. LocalOnly returns the local operation result directly; RemoteOnly returns only the higher-layer remote result and performs no local Runtime admission; LocalAndRemote invokes both independently and returns `LocalAndRemoteDispatchResult` containing separate `Local()` and `Remote()` outcomes. No aggregate success, transaction, rollback, fallback, suppression, quorum or cross-domain ordering semantic is introduced.
+
+The coordinator accepts non-throwing operations rather than taking a Request, so move-only Request Types do not need to be duplicated for two ownership domains. It retains no route/provider state and adds no Runtime storage. The full contract is documented in [Execution-Domain Dispatch Scope](./EXECUTION-DOMAIN-SCOPE.MD).
+
 ## Integration boundary
 
-`InboundAdmission` is a typed facade over local Runtime dispatch; remote identity/correlation remains adapter-owned. `OutboundCompletion<TResponse>` is an invocation-specific, exactly-once completion capability. Its first success/rejection/failure/cancellation publication consumes the capability. Publication returns `CompletionPublicationResult`: `Accepted`, `AlreadyCompleted`, or `Unavailable`. This operational result is distinct from the invocation's semantic terminal `Outcome`. `OutboundInvocation` packages a request view, cancellation token and completion capability without introducing Transport ownership into Command.
+`InboundAdmission` is a typed facade over local Runtime dispatch; `Dispatch(LocalOnly{}, request)` makes that local-only semantic explicit while the original shorthand remains supported. Remote identity/correlation remains adapter-owned. `OutboundCompletion<TResponse>` is an invocation-specific, exactly-once completion capability. Its first success/rejection/failure/cancellation publication consumes the capability. Publication returns `CompletionPublicationResult`: `Accepted`, `AlreadyCompleted`, or `Unavailable`. This operational result is distinct from the invocation's semantic terminal `Outcome`. `OutboundInvocation` packages a request view, cancellation token and completion capability without introducing Transport ownership into Command.
 
 ## Ownership and lifetime
 

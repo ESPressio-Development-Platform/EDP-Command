@@ -104,6 +104,23 @@ namespace ESPressio::Command {
         NotRunning = 1U
     };
 
+    /// Compile-time Dispatch policy permitting only the local Command execution domain.
+    struct LocalOnly final {};
+
+    /// Compile-time Dispatch policy permitting only the remote Command execution domain.
+    struct RemoteOnly final {};
+
+    /// Compile-time Dispatch policy permitting independent local and remote Command execution domains.
+    struct LocalAndRemote final {};
+
+    /// Identifies a supported compile-time Command execution-domain Dispatch policy.
+    /// @tparam TScope Candidate execution-domain policy Type.
+    template<class TScope>
+    concept ExecutionDomainScope =
+        std::is_same_v<std::remove_cvref_t<TScope>, LocalOnly>
+        || std::is_same_v<std::remove_cvref_t<TScope>, RemoteOnly>
+        || std::is_same_v<std::remove_cvref_t<TScope>, LocalAndRemote>;
+
     /// Snapshot of one invocation's observable lifecycle and terminal semantics.
     struct InvocationObservation final {
 
