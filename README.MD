@@ -16,8 +16,12 @@ The runtime is statically capacity planned. It performs no heap allocation and u
 
 EDP-Command does not depend on Transport, Serialisation or Security. Inbound adapters use `InboundAdmission`; outbound adapters receive narrow invocation/completion capabilities and retain their own correlation identity.
 
+## Documentation
+
+- [Command Architecture Contract](./docs/COMMAND-ARCHITECTURE.MD) — durable lifecycle, ownership, deterministic resource, execution, cancellation and integration contracts.
+- [Dependency Graph](./DEPENDENCY_GRAPH.MD) — dependency ownership and direction.
+- [`wiki/`](./wiki/Home.md) — comprehensive internal developer/reference documentation.
+
 ## Repository acceptance
 
-`tests/run_tests.py` builds the host lifecycle contract suite. `demos/CommandLifecycle` demonstrates admission, execution, response extraction and quiescence. `demos/FakeOutboundIntegration` demonstrates the exactly-once integration completion boundary without inventing a Transport architecture.
-
-See `wiki/` for the architecture narrative and `DEPENDENCY_GRAPH.MD` for dependency ownership.
+`tests/run_tests.py` builds the host lifecycle contract and deterministic resource-measurement suites. `demos/CommandLifecycle` demonstrates admission, execution, response extraction and quiescence. `demos/FakeOutboundIntegration` demonstrates the exactly-once integration completion boundary without inventing a Transport architecture.
