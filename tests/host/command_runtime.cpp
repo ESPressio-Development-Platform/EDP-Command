@@ -7,43 +7,21 @@ namespace C = ESPressio::Command;
 namespace T = ESPressio::Threading;
 namespace CF = ESPressio::System::CompositionFramework;
 
-struct EchoRequest final {
-    int Value;
-};
+struct EchoRequest final { int Value; };
+struct EchoResponse final { int Value; };
+struct Echo final { using Request = EchoRequest; using Response = EchoResponse; };
 
-struct EchoResponse final {
-    int Value;
-};
-
-struct Echo final {
-    using Request = EchoRequest;
-    using Response = EchoResponse;
-};
-
-struct EchoHandler final : CF::Provider<
-    C::Composition::Domain,
-    CF::Offers<CF::Offer<C::Composition::Handler<Echo>>>
-> {
-    C::ExecutionResult<EchoResponse> Execute(
-        const EchoRequest& request,
-        C::CancellationToken cancellation
-    ) noexcept {
+struct EchoHandler final : CF::Provider<C::Composition::Domain, CF::Offers<CF::Offer<C::Composition::Handler<Echo>>>> {
+    C::ExecutionResult<EchoResponse> Execute(const EchoRequest& request, C::CancellationToken cancellation) noexcept {
         if (cancellation.IsRequested()) {
             return C::ExecutionResult<EchoResponse>::Failed();
         }
-
         return C::ExecutionResult<EchoResponse>::Succeeded(EchoResponse{request.Value});
     }
 };
 
-struct FakeWaitProvider final : CF::Provider<
-    T::Domain,
-    CF::Offers<
-        CF::Offer<T::BoundedWaitWake, CF::PropertyValue<T::BoundedWaitWakeCapacity, 4U>>
-    >
-> {
+struct FakeWaitProvider final : CF::Provider<T::Domain, CF::Offers<CF::Offer<T::BoundedWaitWake, CF::PropertyValue<T::BoundedWaitWakeCapacity, 4U>>>> {
     static constexpr std::size_t Capacity = 4U;
-
     std::size_t WakeCount{0U};
     T::BoundedWaitWakeResult NextWaitResult{T::BoundedWaitWakeResult::TimedOut};
 
@@ -51,10 +29,7 @@ struct FakeWaitProvider final : CF::Provider<
         return slot < Capacity ? NextWaitResult : T::BoundedWaitWakeResult::InvalidSlot;
     }
 
-    [[nodiscard]] T::BoundedWaitWakeResult WaitUntil(
-        std::size_t slot,
-        C::MonotonicTimestamp
-    ) noexcept {
+    [[nodiscard]] T::BoundedWaitWakeResult WaitUntil(std::size_t slot, C::MonotonicTimestamp) noexcept {
         return slot < Capacity ? NextWaitResult : T::BoundedWaitWakeResult::InvalidSlot;
     }
 
@@ -62,7 +37,6 @@ struct FakeWaitProvider final : CF::Provider<
         if (slot >= Capacity) {
             return T::BoundedWaitWakeResult::InvalidSlot;
         }
-
         ++WakeCount;
         return T::BoundedWaitWakeResult::Woken;
     }
@@ -89,7 +63,7 @@ int main() {
     CommandBootstrap bootstrap(handler, waits);
     auto& runtime = bootstrap.RuntimeInstance();
 
-    assert(bootstrap.Initialize() == C::RuntimeOperationResult::Completed);
+    assert(bootstrap.Initialize() == C::InitializationResult::Initialized);
 
     auto dispatch = runtime.Dispatch(EchoRequest{42});
     assert(dispatch.Accepted());
@@ -100,7 +74,7 @@ int main() {
     assert(handle.WaitFor(noWait) == C::WaitResult::Interrupted);
     waits.NextWaitResult = T::BoundedWaitWakeResult::TimedOut;
 
-    assert(runtime.ExecuteOne() == C::ExecutionStepResult::Executed);
+    assert(runtime.ExecuteOne() == C::ExecutionAttemptResult::Executed);
     assert(waits.WakeCount == 1U);
     assert(handle.WaitFor(noWait) == C::WaitResult::Terminal);
     assert(handle.WaitFor(noWait) == C::WaitResult::Terminal);
@@ -134,7 +108,7 @@ int main() {
     assert(invalid.WaitFor(noWait) == C::WaitResult::InvalidHandle);
     assert(invalid.RequestCancellation() == C::CancellationRequestResult::InvalidHandle);
 
-    assert(runtime.BeginQuiesce() == C::RuntimeOperationResult::Completed);
+    assert(runtime.BeginQuiesce() == C::QuiesceResult::Started);
     auto rejected = runtime.Dispatch(EchoRequest{1});
     assert(!rejected.Accepted());
     assert(rejected.Failure() == C::DispatchFailure::RuntimeUnavailable);
