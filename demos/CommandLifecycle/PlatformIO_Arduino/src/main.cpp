@@ -1,28 +1,84 @@
 #include <Arduino.h>
+
 #include <ESPressio_Command.hpp>
+#include <ESPressio_Platform_FreeRTOS.hpp>
 
-namespace C = ESPressio::Command;
+namespace Command = ESPressio::Command;
+namespace Threading = ESPressio::Threading;
+namespace Composition = ESPressio::System::CompositionFramework;
 
-struct Request final { int Value; explicit Request(int value) noexcept : Value(value) {} Request(Request&&) noexcept = default; Request(const Request&) = delete; ~Request() noexcept = default; };
-struct Response final { int Value; explicit Response(int value) noexcept : Value(value) {} Response(Response&&) noexcept = default; Response(const Response&) = delete; ~Response() noexcept = default; };
-struct DoubleCommand final { using Request = ::Request; using Response = ::Response; };
-struct Executor final { C::ExecutionResult<Response> Execute(const Request& request, C::CancellationToken) noexcept { return C::ExecutionResult<Response>::Succeeded(Response{request.Value * 2}); } };
+struct Request final {
+    int Value;
+    explicit Request(int value) noexcept : Value(value) {}
+    Request(Request&&) noexcept = default;
+    Request(const Request&) = delete;
+    ~Request() noexcept = default;
+};
 
-Executor ExecutorInstance;
-C::Runtime<DoubleCommand, Executor, C::ResourcePlan<4U, 3U, 1U>> Runtime(ExecutorInstance);
+struct Response final {
+    int Value;
+    explicit Response(int value) noexcept : Value(value) {}
+    Response(Response&&) noexcept = default;
+    Response(const Response&) = delete;
+    ~Response() noexcept = default;
+};
+
+struct DoubleCommand final {
+    using Request = ::Request;
+    using Response = ::Response;
+};
+
+struct DoubleHandler final : Composition::Provider<
+    Command::Composition::Domain,
+    Composition::Offers<Composition::Offer<Command::Composition::Handler<DoubleCommand>>>
+> {
+    Command::ExecutionResult<Response> Execute(
+        const Request& request,
+        Command::CancellationToken
+    ) noexcept {
+        return Command::ExecutionResult<Response>::Succeeded(Response{request.Value * 2});
+    }
+};
+
+using WaitProvider = Threading::BoundedWaitWakeProvider<
+    ESPressio::Platform::FreeRTOS::Synchronization::SignalProvider,
+    4U
+>;
+using CommandComposition = Composition::Composition<Command::Composition::Domain, DoubleHandler>;
+using ThreadingComposition = Composition::Composition<Threading::Domain, WaitProvider>;
+using Architecture = Composition::Architecture<CommandComposition, ThreadingComposition>;
+using Bootstrap = Command::Bootstrap<DoubleCommand, Architecture, Command::ResourcePlan<4U, 3U, 1U>>;
+
+DoubleHandler Handler;
+WaitProvider Waits;
+Bootstrap CommandRuntime(Handler, Waits);
 
 void setup() {
     Serial.begin(115200);
-    if (!Runtime.Initialize()) return;
-    auto dispatch = Runtime.Dispatch(Request{21});
-    if (!dispatch.Accepted()) return;
+    if (CommandRuntime.Initialize() != Command::InitializationResult::Initialized) {
+        return;
+    }
+
+    auto& runtime = CommandRuntime.RuntimeInstance();
+    auto dispatch = runtime.Dispatch(Request{21});
+    if (!dispatch.Accepted()) {
+        return;
+    }
+
     auto handle = dispatch.TakeHandle();
-    if (!Runtime.ExecuteOne()) return;
+    if (runtime.ExecuteOne() != Command::ExecutionAttemptResult::Executed) {
+        return;
+    }
+
     auto response = handle.TakeResponse();
-    if (!response.HasValue()) return;
+    if (!response.HasValue()) {
+        return;
+    }
+
     Serial.printf("response=%d\n", response.Take().Value);
     handle.Release();
-    static_cast<void>(Runtime.BeginQuiesce());
+    static_cast<void>(runtime.BeginQuiesce());
 }
 
-void loop() {}
+void loop() {
+}
