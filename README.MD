@@ -2,25 +2,21 @@
 
 Deterministic, bounded Command dispatch and execution for the ESPressio Development Platform.
 
-EDP-Command gives an application a fixed-capacity way to submit typed work, execute it through a compile-time-bound handler, observe its lifecycle, cancel cooperatively and take a typed response. It performs no heap allocation in the Command runtime and does not hide provider discovery or mutable service registration behind runtime APIs.
+EDP-Command lets an application submit typed work to a compile-time-bound handler, observe/cancel it through a move-only Handle, wait for terminal state with a finite timeout, and take a typed response. Runtime topology and capacity are fixed before initialization; there is no runtime service registry or Command-runtime heap allocation.
 
-## A minimal Command application
+## Build a minimal Command application
 
-A locally executable Command has four pieces: a Request/Response type pair, the Command type itself, a persistent handler provider, and an application Bootstrap binding.
+A local Command needs a Request/Response pair, a Command type, one persistent handler, an EDP-Threading bounded wait provider, and an application Architecture tying those domains together.
 
 ### 1. Declare the Command
 
 ```cpp
 struct AddRequest { int Left; int Right; };
 struct AddResponse { int Value; };
-
-struct Add final {
-    using Request = AddRequest;
-    using Response = AddResponse;
-};
+struct Add final { using Request = AddRequest; using Response = AddResponse; };
 ```
 
-### 2. Provide its handler through Composition
+### 2. Declare its handler
 
 ```cpp
 namespace Command = ESPressio::Command;
@@ -28,19 +24,14 @@ namespace Composition = ESPressio::System::CompositionFramework;
 
 class AddHandler final : public Composition::Provider<
     Command::Composition::Domain,
-    Composition::Offers<
-        Composition::Offer<Command::Composition::Handler<Add>>
-    >
+    Composition::Offers<Composition::Offer<Command::Composition::Handler<Add>>>
 > {
 public:
     Command::ExecutionResult<AddResponse> Execute(
         const AddRequest& request,
         Command::CancellationToken cancellation
     ) noexcept {
-        if (cancellation.IsRequested()) {
-            return Command::ExecutionResult<AddResponse>::Failed();
-        }
-
+        if (cancellation.IsRequested()) return Command::ExecutionResult<AddResponse>::Failed();
         return Command::ExecutionResult<AddResponse>::Succeeded(
             AddResponse{request.Left + request.Right}
         );
@@ -48,43 +39,69 @@ public:
 };
 ```
 
-`Handler<Add>` is an exclusive Command-domain capability. The Command Composition therefore admits exactly one handler provider for this Command type; ambiguity is rejected at compile time rather than resolved dynamically.
+`Handler<Add>` is exclusive: the Architecture must resolve exactly one provider for this Command type.
 
-### 3. Fix the application topology and resource plan
+### 3. Provide bounded waiting
+
+On ESP32/FreeRTOS a four-slot provider can be declared as:
+
+```cpp
+using WaitProvider = ESPressio::Threading::BoundedWaitWakeProvider<
+    ESPressio::Platform::FreeRTOS::Synchronization::SignalProvider,
+    4U
+>;
+```
+
+The wait-provider capacity must cover every Command invocation record. Command borrows this application-owned Threading provider; it does not own native FreeRTOS/Platform synchronization itself.
+
+### 4. Build the immutable application Architecture
 
 ```cpp
 using ApplicationCommands = Composition::Composition<
     Command::Composition::Domain,
     AddHandler
 >;
+using ApplicationThreading = Composition::Composition<
+    ESPressio::Threading::Domain,
+    WaitProvider
+>;
+using ApplicationArchitecture = Composition::Architecture<
+    ApplicationCommands,
+    ApplicationThreading
+>;
 
 using AddBootstrap = Command::Bootstrap<
     Add,
-    ApplicationCommands,
+    ApplicationArchitecture,
     Command::ResourcePlan<4, 3, 1>
 >;
 ```
 
-The application topology is compile-time fixed. `ResourcePlan<4, 3, 1>` reserves four invocation records, permits three queued invocations and one executing invocation.
+`ResourcePlan<4, 3, 1>` reserves four invocation records, permits three queued invocations and one executing invocation. Bootstrap statically rejects a wait provider whose capacity is smaller than the invocation capacity.
 
-### 4. Bootstrap, initialize and dispatch
+### 5. Construct persistent providers and Bootstrap
 
 ```cpp
-AddHandler addHandler;          // persistent application-owned provider
-AddBootstrap addCommand(addHandler);
+AddHandler addHandler;
+WaitProvider waits;
+AddBootstrap addCommand(addHandler, waits);
 
-if (!addCommand.Initialize()) {
-    return 1;
-}
+if (!addCommand.Initialize()) return 1;
+```
 
+These provider objects must outlive the Command Bootstrap. Topology is immutable after initialization.
+
+### 6. Dispatch, execute, wait and take the response
+
+```cpp
 auto& runtime = addCommand.RuntimeInstance();
 auto dispatch = runtime.Dispatch(AddRequest{20, 22});
-if (!dispatch.Accepted()) {
-    return 2;
-}
+if (!dispatch.Accepted()) return 2;
 
 auto handle = dispatch.TakeHandle();
-runtime.ExecuteOne();
+if (!runtime.ExecuteOne()) return 3;
+
+if (handle.WaitFor(Command::Duration{}) != Command::WaitResult::Terminal) return 4;
 
 auto response = handle.TakeResponse();
 if (response.HasValue()) {
@@ -92,13 +109,15 @@ if (response.HasValue()) {
 }
 ```
 
-The complete buildable source for this walkthrough is [`examples/HelloCommand/main.cpp`](./examples/HelloCommand/main.cpp).
+`WaitFor` and `WaitUntil` are finite and non-consuming. Repeated waits on a terminal Handle return `Terminal`; provider interruption is reported as `Interrupted`; and authoritative terminal state wins a simultaneous timeout/wake race.
 
-## Lifecycle contract
+The complete source is [`examples/HelloCommand/main.cpp`](./examples/HelloCommand/main.cpp).
 
-A Dispatch either fails immediately without creating an invocation, or atomically admits one invocation and returns its exclusive move-only Handle. Accepted invocations move through `Queued`, `Executing`, `Completed` or `Cancelled`. `Completed` is orthogonal to `Succeeded`, `Rejected` and `Failed`.
+## Lifecycle and cancellation
 
-A retained Handle keeps its terminal invocation record available for observation and response extraction. Releasing/destroying the Handle never implicitly cancels work.
+Dispatch either fails without creating an invocation or atomically admits one and returns its exclusive move-only Handle. Accepted invocations move through `Queued`, `Executing`, `Completed` or `Cancelled`. `Completed` has the orthogonal disposition `Succeeded`, `Rejected` or `Failed`.
+
+Cancellation request outcomes are `Requested`, `AlreadyRequested`, `TooLate`, and `InvalidHandle`. Cancellation is cooperative once execution has begun. Releasing/destroying a Handle never implicitly cancels work.
 
 ## Admission failures
 
@@ -112,18 +131,19 @@ EDP-Command does not depend on Transport, Serialisation or Security. Inbound ada
 
 ```text
 EDP-Command
-  +-- EDP-System   compile-time Composition and handler-provider resolution
-  +-- EDP-Memory   typed object lifetime and ownership transfer
-  `-- EDP-Clock    canonical Duration / MonotonicTimestamp vocabulary
+  +-- EDP-System     Composition, Architecture and provider resolution
+  +-- EDP-Memory     typed object lifetime and ownership transfer
+  +-- EDP-Threading  bounded finite wait/wake capability
+  `-- EDP-Clock      Duration / MonotonicTimestamp vocabulary
 ```
 
-These are mandatory production dependencies in the current reconciliation state. EDP-Threading bounded waiting is the next active reconciliation slice and is not documented as complete until Command consumes it in production code. See [DEPENDENCY_GRAPH.MD](./DEPENDENCY_GRAPH.MD).
+See [DEPENDENCY_GRAPH.MD](./DEPENDENCY_GRAPH.MD).
 
 ## Documentation
 
-- [Command Architecture Contract](./docs/COMMAND-ARCHITECTURE.MD) — durable lifecycle, ownership, deterministic resource, execution, cancellation and integration contracts.
-- [`wiki/`](./wiki/Home.md) — comprehensive internal developer/reference documentation.
+- [Command Architecture Contract](./docs/COMMAND-ARCHITECTURE.MD)
+- [`wiki/`](./wiki/Home.md)
 
 ## Repository acceptance
 
-`tests/run_tests.py` builds the host lifecycle/Composition contract and deterministic resource-measurement suites. `demos/CommandLifecycle` demonstrates the same Composition-backed Bootstrap path plus admission, execution, response extraction and quiescence. `demos/FakeOutboundIntegration` demonstrates the exactly-once integration completion boundary without inventing a Transport architecture.
+`tests/run_tests.py` builds the host lifecycle/Architecture contract and deterministic resource-measurement suites. `demos/CommandLifecycle` exercises Composition/Architecture/Bootstrap, execution, finite terminal waiting, response extraction and quiescence. `demos/FakeOutboundIntegration` exercises exactly-once integration completion without inventing a Transport architecture.
