@@ -23,9 +23,9 @@ public:
 template<class TResponse>
 class OutboundCompletion final {
 public:
-    using SuccessFn = bool (*)(void*, CompletionStatus, TResponse*) noexcept;
-    using FailureFn = bool (*)(void*, ExecutionFailure) noexcept;
-    using CancelFn = bool (*)(void*) noexcept;
+    using SuccessFn = CompletionPublicationResult (*)(void*, Outcome, TResponse*) noexcept;
+    using FailureFn = CompletionPublicationResult (*)(void*, ExecutionFailure) noexcept;
+    using CancelFn = CompletionPublicationResult (*)(void*) noexcept;
 private:
     void* _context{nullptr};
     SuccessFn _success{nullptr};
@@ -38,20 +38,28 @@ public:
     OutboundCompletion(const OutboundCompletion&) = delete;
     OutboundCompletion& operator=(const OutboundCompletion&) = delete;
 
-    [[nodiscard]] bool Succeeded(TResponse response) noexcept {
-        if (_used || _success == nullptr) return false; _used = true;
-        return _success(_context, CompletionStatus::Succeeded, &response);
+    [[nodiscard]] CompletionPublicationResult Succeeded(TResponse response) noexcept {
+        if (_used) return CompletionPublicationResult::AlreadyCompleted;
+        if (_success == nullptr) return CompletionPublicationResult::Unavailable;
+        _used = true;
+        return _success(_context, Outcome::Succeeded, &response);
     }
-    [[nodiscard]] bool Rejected(TResponse response) noexcept {
-        if (_used || _success == nullptr) return false; _used = true;
-        return _success(_context, CompletionStatus::Rejected, &response);
+    [[nodiscard]] CompletionPublicationResult Rejected(TResponse response) noexcept {
+        if (_used) return CompletionPublicationResult::AlreadyCompleted;
+        if (_success == nullptr) return CompletionPublicationResult::Unavailable;
+        _used = true;
+        return _success(_context, Outcome::Rejected, &response);
     }
-    [[nodiscard]] bool Failed() noexcept {
-        if (_used || _failure == nullptr) return false; _used = true;
+    [[nodiscard]] CompletionPublicationResult Failed() noexcept {
+        if (_used) return CompletionPublicationResult::AlreadyCompleted;
+        if (_failure == nullptr) return CompletionPublicationResult::Unavailable;
+        _used = true;
         return _failure(_context, ExecutionFailure::IntegrationFailure);
     }
-    [[nodiscard]] bool Cancelled() noexcept {
-        if (_used || _cancel == nullptr) return false; _used = true;
+    [[nodiscard]] CompletionPublicationResult Cancelled() noexcept {
+        if (_used) return CompletionPublicationResult::AlreadyCompleted;
+        if (_cancel == nullptr) return CompletionPublicationResult::Unavailable;
+        _used = true;
         return _cancel(_context);
     }
 };
@@ -59,17 +67,42 @@ public:
 template<>
 class OutboundCompletion<void> final {
 public:
-    using SuccessFn = bool (*)(void*, CompletionStatus) noexcept;
-    using FailureFn = bool (*)(void*, ExecutionFailure) noexcept;
-    using CancelFn = bool (*)(void*) noexcept;
+    using SuccessFn = CompletionPublicationResult (*)(void*, Outcome) noexcept;
+    using FailureFn = CompletionPublicationResult (*)(void*, ExecutionFailure) noexcept;
+    using CancelFn = CompletionPublicationResult (*)(void*) noexcept;
 private:
-    void* _context{nullptr}; SuccessFn _success{nullptr}; FailureFn _failure{nullptr}; CancelFn _cancel{nullptr}; bool _used{false};
+    void* _context{nullptr};
+    SuccessFn _success{nullptr};
+    FailureFn _failure{nullptr};
+    CancelFn _cancel{nullptr};
+    bool _used{false};
 public:
-    OutboundCompletion(void* context, SuccessFn success, FailureFn failure, CancelFn cancel) noexcept : _context(context), _success(success), _failure(failure), _cancel(cancel) {}
-    [[nodiscard]] bool Succeeded() noexcept { if (_used || !_success) return false; _used=true; return _success(_context, CompletionStatus::Succeeded); }
-    [[nodiscard]] bool Rejected() noexcept { if (_used || !_success) return false; _used=true; return _success(_context, CompletionStatus::Rejected); }
-    [[nodiscard]] bool Failed() noexcept { if (_used || !_failure) return false; _used=true; return _failure(_context, ExecutionFailure::IntegrationFailure); }
-    [[nodiscard]] bool Cancelled() noexcept { if (_used || !_cancel) return false; _used=true; return _cancel(_context); }
+    OutboundCompletion(void* context, SuccessFn success, FailureFn failure, CancelFn cancel) noexcept :
+        _context(context), _success(success), _failure(failure), _cancel(cancel) {}
+    [[nodiscard]] CompletionPublicationResult Succeeded() noexcept {
+        if (_used) return CompletionPublicationResult::AlreadyCompleted;
+        if (_success == nullptr) return CompletionPublicationResult::Unavailable;
+        _used = true;
+        return _success(_context, Outcome::Succeeded);
+    }
+    [[nodiscard]] CompletionPublicationResult Rejected() noexcept {
+        if (_used) return CompletionPublicationResult::AlreadyCompleted;
+        if (_success == nullptr) return CompletionPublicationResult::Unavailable;
+        _used = true;
+        return _success(_context, Outcome::Rejected);
+    }
+    [[nodiscard]] CompletionPublicationResult Failed() noexcept {
+        if (_used) return CompletionPublicationResult::AlreadyCompleted;
+        if (_failure == nullptr) return CompletionPublicationResult::Unavailable;
+        _used = true;
+        return _failure(_context, ExecutionFailure::IntegrationFailure);
+    }
+    [[nodiscard]] CompletionPublicationResult Cancelled() noexcept {
+        if (_used) return CompletionPublicationResult::AlreadyCompleted;
+        if (_cancel == nullptr) return CompletionPublicationResult::Unavailable;
+        _used = true;
+        return _cancel(_context);
+    }
 };
 
 template<class TCommand, class TCompletion>
