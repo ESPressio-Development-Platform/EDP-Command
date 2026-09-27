@@ -22,7 +22,7 @@ Lifecycle state and terminal semantic outcome are deliberately separate. Every t
 
 `ResourcePlan<InvocationCapacity, QueueCapacity, ExecutionConcurrency>` fixes the core capacities at compile time. Runtime storage is embedded in fixed arrays. Request and Response objects are constructed, moved and destroyed in caller/runtime-owned raw storage through EDP-Memory; Command performs no heap allocation.
 
-Each invocation slot maps deterministically to the same indexed slot in the external bounded wait/wake provider. The synchronization objects remain owned by EDP-Threading/application composition rather than Command. Post-reconciliation Runtime measurement adds exactly one borrowed provider pointer: 112, 176, 360 and 664 bytes for the accepted 2/1/1, 4/3/1, 10/8/2 and 20/16/4 plans respectively, an invariant +8 bytes over the historical Runtime sizes on the measured host. These measurements predate the H16 terminal-Outcome representation and must be revalidated by the final regression gate.
+Each invocation slot maps deterministically to the same indexed slot in the external bounded wait/wake provider. The synchronization objects remain owned by EDP-Threading/application composition rather than Command. The accepted post-H16 host regression on 2026-09-27 measured Runtime sizes of 112, 176, 360 and 664 bytes for the 2/1/1, 4/3/1, 10/8/2 and 20/16/4 fixtures respectively. These measurements describe the maintained validation fixtures rather than an ABI guarantee for arbitrary Command/Handler/provider types.
 
 A retained Handle deliberately keeps a terminal record occupied until release/destruction so observation, waiting and response extraction remain valid. A response is extractable at most once.
 
@@ -62,4 +62,4 @@ EDP-Memory is mandatory for typed lifetime and ownership-transfer operations. ED
 
 ## Validation
 
-`tests/run_tests.py` covers host lifecycle/wait/cancellation contracts, compile-time rejection of missing and duplicate Command Handlers, and deterministic Runtime-size measurements. `demos/CommandLifecycle` and `demos/FakeOutboundIntegration` are maintained in Arduino IDE, PlatformIO Arduino and PlatformIO ESP-IDF forms. `examples/HelloCommand` provides the consumer-oriented Bootstrap example described by README.
+`tests/run_tests.py` covers host lifecycle/wait/cancellation contracts, compile-time rejection of missing and duplicate Command Handlers, and deterministic Runtime-size measurements. The first post-H16 dependency-ordered host gate passed EDP-Memory, EDP-Threading and EDP-Command on 2026-09-27. `demos/CommandLifecycle` and `demos/FakeOutboundIntegration` are maintained in Arduino IDE, PlatformIO Arduino and PlatformIO ESP-IDF forms. `examples/HelloCommand` provides the consumer-oriented Bootstrap example described by README. A final current-tip embedded demo build gate remains required after static V2 reconciliation.
