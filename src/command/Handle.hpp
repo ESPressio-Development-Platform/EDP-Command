@@ -8,8 +8,7 @@
 
 namespace ESPressio::Command {
 
-template<class TCommand, class TRuntime>
-class DispatchResult;
+template<class TCommand, class TRuntime> class DispatchResult;
 
 template<class TResponse>
 class TakeResponseResult final {
@@ -24,8 +23,7 @@ public:
         if (other._live) {
             auto& value = *reinterpret_cast<TResponse*>(other._storage);
             static_cast<void>(ESPressio::Memory::ObjectLifetime::MoveConstruct<TResponse>(_storage, value));
-            ESPressio::Memory::ObjectLifetime::Destroy(value);
-            _live = true; other._live = false;
+            ESPressio::Memory::ObjectLifetime::Destroy(value); _live = true; other._live = false;
         }
     }
     ~TakeResponseResult() { if (_live) ESPressio::Memory::ObjectLifetime::Destroy(*reinterpret_cast<TResponse*>(_storage)); }
@@ -53,6 +51,8 @@ public:
     ~Handle(){ Release(); }
     [[nodiscard]] bool IsValid() const noexcept { if(!_runtime)return false; bool valid=false; static_cast<void>(_runtime->Observe(_index,_generation,valid)); return valid; }
     [[nodiscard]] InvocationObservation State(bool& valid) const noexcept { if(!_runtime){valid=false;return{};} return _runtime->Observe(_index,_generation,valid); }
+    [[nodiscard]] WaitResult WaitFor(Duration duration) noexcept { return !_runtime ? WaitResult::InvalidHandle : _runtime->WaitFor(_index,_generation,duration); }
+    [[nodiscard]] WaitResult WaitUntil(MonotonicTimestamp deadline) noexcept { return !_runtime ? WaitResult::InvalidHandle : _runtime->WaitUntil(_index,_generation,deadline); }
     [[nodiscard]] CancellationRequestResult RequestCancellation() noexcept { return !_runtime ? CancellationRequestResult::InvalidHandle : _runtime->RequestCancellation(_index,_generation); }
     template<class R = Response<TCommand>> requires (!std::is_void_v<R>)
     [[nodiscard]] TakeResponseResult<R> TakeResponse() noexcept {
