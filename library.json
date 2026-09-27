@@ -11,6 +11,7 @@
   "frameworks": "*",
   "platforms": "*",
   "dependencies": [
+    {"name":"EDP-System","version":"https://github.com/ESPressio-Development-Platform/EDP-System.git#main","platforms":"*"},
     {"name":"EDP-Memory","version":"https://github.com/ESPressio-Development-Platform/EDP-Memory.git#command_architecture_implementation","platforms":"*"},
     {"name":"EDP-Clock","version":"https://github.com/ESPressio-Development-Platform/EDP-Clock.git#main","platforms":"*"}
   ]
