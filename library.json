@@ -12,6 +12,7 @@
   "platforms": "*",
   "dependencies": [
     {"name":"EDP-System","version":"https://github.com/ESPressio-Development-Platform/EDP-System.git#main","platforms":"*"},
+    {"name":"EDP-Primitives","version":"https://github.com/ESPressio-Development-Platform/EDP-Primitives.git#main","platforms":"*"},
     {"name":"EDP-Memory","version":"https://github.com/ESPressio-Development-Platform/EDP-Memory.git#main","platforms":"*"},
     {"name":"EDP-Threading","version":"https://github.com/ESPressio-Development-Platform/EDP-Threading.git#main","platforms":"*"},
     {"name":"EDP-Clock","version":"https://github.com/ESPressio-Development-Platform/EDP-Clock.git#main","platforms":"*"}

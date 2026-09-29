@@ -28,7 +28,7 @@ All declarations below are **PUBLIC API** unless explicitly stated otherwise. So
 
 `RuntimeState`: `Uninitialized`, `Running`, `Quiescing`, `Quiescent`.
 
-`LocalOnly`, `RemoteOnly`, and `LocalAndRemote` are empty compile-time F4 execution-domain Dispatch policy Types. `ExecutionDomainScope<TScope>` is satisfied only by those policy Types (including cv/ref-qualified forms). Scope is Dispatch control metadata and is not Request/schema/wire state.
+`LocalOnly`, `RemoteOnly`, and `LocalAndRemote` are Command-facing aliases of the canonical empty compile-time `EDP-Primitives` execution-domain Dispatch policy Types. `ExecutionDomainScope<TScope>` is satisfied only by those policy Types (including cv/ref-qualified forms). Scope is Dispatch control metadata and is not Request/schema/wire state.
 
 `InvocationObservation` is a value snapshot. `State` always describes lifecycle. `HasOutcome` gates `TerminalOutcome`; `HasFailure` gates `Failure`. `DidSucceed()`, `WasRejected()`, `DidFail()` and `WasCancelled()` are genuine Boolean predicates over terminal outcome state. Default outcome/failure values are placeholders unless their corresponding presence flag is true.
 

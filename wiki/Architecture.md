@@ -36,7 +36,7 @@ Fallible operations do not use Boolean success/failure. Runtime initialization, 
 
 ## Execution-domain scope
 
-F4 scope is compile-time Dispatch control metadata: `LocalOnly`, `RemoteOnly`, or `LocalAndRemote`. It is never retained in Request/schema/wire state. Destination-free `Runtime::Dispatch` remains local-only; a higher routing/integration layer may use `DispatchScoped` only after selecting the applicable local and/or remote operations.
+F4 scope is compile-time Dispatch control metadata: `LocalOnly`, `RemoteOnly`, or `LocalAndRemote`. These names re-export the canonical `EDP-Primitives` execution-domain scope Types rather than defining Command-local duplicates. It is never retained in Request/schema/wire state. Destination-free `Runtime::Dispatch` remains local-only; a higher routing/integration layer may use `DispatchScoped` only after selecting the applicable local and/or remote operations.
 
 LocalOnly returns the local operation result directly. RemoteOnly invokes no local Runtime and returns only the higher-layer remote result. LocalAndRemote invokes both selected operations independently and returns structurally separate `Local()` and `Remote()` outcomes. Neither domain can create implicit fallback, rollback or suppression in the other, and there is no aggregate success/quorum or cross-domain ordering contract. `DispatchScoped` retains no provider, route, Request or runtime state, so F4 adds no persistent Runtime resource dimension.
 

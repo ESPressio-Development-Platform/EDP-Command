@@ -50,7 +50,7 @@ A Runtime starts `Uninitialized`; `Initialize` transitions once to `Running`. `B
 
 ## Execution-domain Dispatch scope
 
-F4 defines three compile-time per-call policy Types: `LocalOnly`, `RemoteOnly`, and `LocalAndRemote`. Scope is Dispatch control metadata rather than Request/schema/wire state. The core destination-free `Runtime::Dispatch(request)` remains naturally LocalOnly and therefore acquires no routing or Transport responsibility.
+F4 exposes three compile-time per-call policy names: `LocalOnly`, `RemoteOnly`, and `LocalAndRemote`. They are exact re-exports of the canonical `EDP-Primitives` execution-domain scope Types, so Command does not own parallel scope definitions. Scope is Dispatch control metadata rather than Request/schema/wire state. The core destination-free `Runtime::Dispatch(request)` remains naturally LocalOnly and therefore acquires no routing or Transport responsibility.
 
 Higher routing/integration code may use `DispatchScoped` after it has already selected the applicable operations. LocalOnly returns the local operation result directly; RemoteOnly returns only the higher-layer remote result and performs no local Runtime admission; LocalAndRemote invokes both independently and returns `LocalAndRemoteDispatchResult` containing separate `Local()` and `Remote()` outcomes. No aggregate success, transaction, rollback, fallback, suppression, quorum or cross-domain ordering semantic is introduced.
 

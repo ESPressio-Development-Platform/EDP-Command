@@ -427,3 +427,10 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# PlatformIO / PIOArduino generated build state
+.pio/
+**/.pio/
+.pioenvs/
+.piolibdeps/
+**/sdkconfig.*

@@ -15,6 +15,7 @@ print("EDP-Command host contract and resource suite")
 repositories = {
     "EDP-Command": root,
     "EDP-Clock": workspace / "EDP-Clock",
+    "EDP-Primitives": workspace / "EDP-Primitives",
     "EDP-Memory": workspace / "EDP-Memory",
     "EDP-System": workspace / "EDP-System",
     "EDP-Platform": workspace / "EDP-Platform",

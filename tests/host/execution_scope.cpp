@@ -6,6 +6,27 @@
 
 #include <ESPressio_Command.hpp>
 
+static_assert(
+    std::is_same_v<
+        ESPressio::Command::LocalOnly,
+        ESPressio::Primitives::ExecutionDomain::LocalOnly
+    >
+);
+
+static_assert(
+    std::is_same_v<
+        ESPressio::Command::RemoteOnly,
+        ESPressio::Primitives::ExecutionDomain::RemoteOnly
+    >
+);
+
+static_assert(
+    std::is_same_v<
+        ESPressio::Command::LocalAndRemote,
+        ESPressio::Primitives::ExecutionDomain::LocalAndRemote
+    >
+);
+
 namespace C = ESPressio::Command;
 
 /// Test-local outcome for a selected local Dispatch operation.

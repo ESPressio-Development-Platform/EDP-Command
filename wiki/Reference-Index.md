@@ -8,7 +8,7 @@ This is the exhaustive production-source reference index for the current `src` s
 
 ## `src/command/CommandTypes.hpp`
 
-**PUBLIC API.** Defines/aliases `Duration`, `MonotonicTimestamp`; `InvocationState`, `Outcome`, `ExecutionFailure`, `DispatchFailure`, `WaitResult`, `CancellationRequestResult`, `TakeResponseStatus`, `CompletionPublicationResult`, `InitializationResult`, `ExecutionAttemptResult`, `QuiesceResult`, `RuntimeState` and their explicit values; F4 scope policy Types `LocalOnly`, `RemoteOnly`, `LocalAndRemote` plus `ExecutionDomainScope`; `InvocationObservation` and its lifecycle/outcome/failure fields plus terminal predicates; `Request<TCommand>`, `Response<TCommand>`, `CommandType`; `CancellationToken`; and `ExecutionResult<TResponse>` / `ExecutionResult<void>`. See [Public API](Public-API) and [Private Implementation](Private-Implementation).
+**PUBLIC API.** Defines/aliases `Duration`, `MonotonicTimestamp`; `InvocationState`, `Outcome`, `ExecutionFailure`, `DispatchFailure`, `WaitResult`, `CancellationRequestResult`, `TakeResponseStatus`, `CompletionPublicationResult`, `InitializationResult`, `ExecutionAttemptResult`, `QuiesceResult`, `RuntimeState` and their explicit values; F4 re-exported canonical Primitive scope Types `LocalOnly`, `RemoteOnly`, `LocalAndRemote` plus the `ExecutionDomainScope` concept alias; `InvocationObservation` and its lifecycle/outcome/failure fields plus terminal predicates; `Request<TCommand>`, `Response<TCommand>`, `CommandType`; `CancellationToken`; and `ExecutionResult<TResponse>` / `ExecutionResult<void>`. See [Public API](Public-API) and [Private Implementation](Private-Implementation).
 
 ## `src/command/Composition.hpp`
 

@@ -152,10 +152,11 @@ EDP-Command does not depend on Transport, Serialisation or Security. Inbound ada
 
 ```text
 EDP-Command
-  +-- EDP-System     Composition, Architecture and provider resolution
-  +-- EDP-Memory     typed object lifetime and ownership transfer
-  +-- EDP-Threading  bounded finite wait/wake capability
-  `-- EDP-Clock      Duration / MonotonicTimestamp vocabulary
+  +-- EDP-System      Composition, Architecture and provider resolution
+  +-- EDP-Primitives  canonical execution-domain scope vocabulary
+  +-- EDP-Memory      typed object lifetime and ownership transfer
+  +-- EDP-Threading   bounded finite wait/wake capability
+  `-- EDP-Clock       Duration / MonotonicTimestamp vocabulary
 ```
 
 See [DEPENDENCY_GRAPH.MD](./DEPENDENCY_GRAPH.MD).

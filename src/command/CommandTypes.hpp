@@ -3,10 +3,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <type_traits>
 
 #include <ESPressio_Clock.hpp>
 #include <ESPressio_Memory.hpp>
+#include <ESPressio_Primitives.hpp>
 
 namespace ESPressio::Command {
 
@@ -104,22 +104,19 @@ namespace ESPressio::Command {
         NotRunning = 1U
     };
 
-    /// Compile-time Dispatch policy permitting only the local Command execution domain.
-    struct LocalOnly final {};
+    /// Re-export of the canonical Primitive local-only execution-domain scope.
+    using LocalOnly = Primitives::ExecutionDomain::LocalOnly;
 
-    /// Compile-time Dispatch policy permitting only the remote Command execution domain.
-    struct RemoteOnly final {};
+    /// Re-export of the canonical Primitive remote-only execution-domain scope.
+    using RemoteOnly = Primitives::ExecutionDomain::RemoteOnly;
 
-    /// Compile-time Dispatch policy permitting independent local and remote Command execution domains.
-    struct LocalAndRemote final {};
+    /// Re-export of the canonical Primitive combined execution-domain scope.
+    using LocalAndRemote = Primitives::ExecutionDomain::LocalAndRemote;
 
-    /// Identifies a supported compile-time Command execution-domain Dispatch policy.
+    /// Command-facing alias of the canonical Primitive execution-domain scope concept.
     /// @tparam TScope Candidate execution-domain policy Type.
     template<class TScope>
-    concept ExecutionDomainScope =
-        std::is_same_v<std::remove_cvref_t<TScope>, LocalOnly>
-        || std::is_same_v<std::remove_cvref_t<TScope>, RemoteOnly>
-        || std::is_same_v<std::remove_cvref_t<TScope>, LocalAndRemote>;
+    concept ExecutionDomainScope = Primitives::ExecutionDomain::Scope<TScope>;
 
     /// Snapshot of one invocation's observable lifecycle and terminal semantics.
     struct InvocationObservation final {

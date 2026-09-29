@@ -1,6 +1,6 @@
 # EDP-Command Developer Wiki
 
-EDP-Command owns deterministic bounded Command admission, execution, lifecycle, cancellation, response extraction and narrow integration capabilities. It also exposes the F4 compile-time `LocalOnly`, `RemoteOnly`, and `LocalAndRemote` per-call execution-domain policy without taking ownership of routing. It does **not** own Transport, Serialisation, Security, remote correlation or scheduling.
+EDP-Command owns deterministic bounded Command admission, execution, lifecycle, cancellation, response extraction and narrow integration capabilities. It also exposes the F4 compile-time `LocalOnly`, `RemoteOnly`, and `LocalAndRemote` per-call execution-domain policy re-exported from EDP-Primitives without taking ownership of routing. It does **not** own Transport, Serialisation, Security, remote correlation or scheduling.
 
 The consumer entry point is `src/ESPressio_Command.hpp`. EDP-Memory supplies lifetime/transfer operations and EDP-Clock supplies time vocabulary.
 

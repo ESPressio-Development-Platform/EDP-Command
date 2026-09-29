@@ -10,7 +10,7 @@ The three compile-time policy Types are:
 - `RemoteOnly`
 - `LocalAndRemote`
 
-`ExecutionDomainScope<TScope>` identifies those three policy Types. Scope is Dispatch control metadata. It is not part of the Command Request, schema, TypeIdentifier, serialization format, destination identity, or retained invocation state.
+`ExecutionDomainScope<TScope>` aliases the canonical `Primitives::ExecutionDomain::Scope<TScope>` concept and therefore identifies those same three policy Types, including cv/ref-qualified forms. Scope is Dispatch control metadata. It is not part of the Command Request, schema, TypeIdentifier, serialization format, destination identity, or retained invocation state.
 
 ## Local Runtime remains local-only
 

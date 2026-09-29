@@ -6,7 +6,8 @@
 
 ```text
 EDP-Command
-  +-- EDP-System     [mandatory] compile-time Composition/Architecture and provider resolution
+  +-- EDP-System      [mandatory] compile-time Composition/Architecture and provider resolution
+  +-- EDP-Primitives  [mandatory] canonical execution-domain scope vocabulary
   +-- EDP-Memory     [mandatory] typed object lifetime and ownership transfer
   +-- EDP-Threading  [mandatory] bounded finite wait/wake capability
   `-- EDP-Clock      [mandatory] canonical Duration / MonotonicTimestamp vocabulary
@@ -14,7 +15,7 @@ EDP-Command
 
 ## Mandatory Dependencies
 
-EDP-System supplies the Command Composition domain, exclusive `Handler<TCommand>` resolution and cross-domain Architecture used by Bootstrap. EDP-Memory supplies request/response/result lifetime and transfer operations. EDP-Threading supplies the externally-owned `BoundedWaitWake` capability used by Runtime/Handle finite waits. EDP-Clock supplies canonical time vocabulary.
+EDP-System supplies the Command Composition domain, exclusive `Handler<TCommand>` resolution and cross-domain Architecture used by Bootstrap. EDP-Primitives supplies the canonical `LocalOnly`, `RemoteOnly`, `LocalAndRemote` execution-domain scope vocabulary re-exported by Command. EDP-Memory supplies request/response/result lifetime and transfer operations. EDP-Threading supplies the externally-owned `BoundedWaitWake` capability used by Runtime/Handle finite waits. EDP-Clock supplies canonical time vocabulary.
 
 EDP-Threading itself consumes EDP-Platform synchronization providers; Command does not consume native Platform Signal mechanics. Platform-specific applications choose the concrete Signal provider used by the bounded Threading provider (for example FreeRTOS `SignalProvider`).
 

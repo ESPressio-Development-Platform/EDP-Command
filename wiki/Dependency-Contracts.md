@@ -1,5 +1,9 @@
 # Dependency Contracts
 
+## EDP-Primitives — mandatory execution-domain vocabulary dependency
+
+Command consumes the canonical family-neutral `Primitives::ExecutionDomain::LocalOnly`, `RemoteOnly`, and `LocalAndRemote` Types plus the `Scope<TScope>` concept. `CommandTypes.hpp` re-exports those exact Types in the Command namespace and aliases the canonical concept so callers retain Command-oriented spelling without creating parallel semantic Types. Command retains ownership of `DispatchScoped`, local admission behaviour, and Command-specific result semantics.
+
 ## EDP-Memory — mandatory production dependency
 
 Command consumes `ObjectLifetime` to construct/move/destroy Request and Response objects in fixed raw storage and `OwnershipTransfer::Move` at explicit ownership-transfer boundaries. Command owns the storage; EDP-Memory owns neither objects nor buffers and performs no allocation for Command. This edge is required by `CommandTypes.hpp`, `Handle.hpp`, `Runtime.hpp` and transitively `Integration.hpp`.
@@ -24,7 +28,7 @@ PlatformIO/Arduino demonstrations use EDP-Platform FreeRTOS synchronization as t
 
 ## Deliberate non-dependencies
 
-Transport, Serialisation and Security are intentionally absent. Inbound adapters retain remote correlation and use `InboundAdmission`; outbound integrations receive invocation-specific completion capability. F4 execution-domain scope adds no dependency: `DispatchScoped` coordinates caller-selected operations without defining Transport/provider/destination Types or a routing registry. This preserves dependency direction and keeps Command transport-agnostic.
+Transport, Serialisation and Security are intentionally absent. Inbound adapters retain remote correlation and use `InboundAdmission`; outbound integrations receive invocation-specific completion capability. The F4 scope vocabulary introduces only the foundational EDP-Primitives dependency; `DispatchScoped` still coordinates caller-selected operations without defining Transport/provider/destination Types or a routing registry. This preserves dependency direction and keeps Command transport-agnostic.
 
 ## Test/demo dependencies
 

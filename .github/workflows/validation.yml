@@ -20,7 +20,7 @@ jobs:
         run: |
           set -euo pipefail
           parent="$(dirname "$GITHUB_WORKSPACE")"
-          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading; do
+          for repo in EDP-Clock EDP-Primitives EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading; do
             git clone --depth 1 --branch main "https://github.com/ESPressio-Development-Platform/${repo}.git" "${parent}/${repo}"
           done
       - name: Run host contract suite
@@ -38,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           parent="$(dirname "$GITHUB_WORKSPACE")"
-          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading; do
+          for repo in EDP-Clock EDP-Primitives EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading; do
             git clone --depth 1 --branch main "https://github.com/ESPressio-Development-Platform/${repo}.git" "${parent}/${repo}"
           done
       - name: Run ASan and UBSan host suite
@@ -62,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           parent="$(dirname "$GITHUB_WORKSPACE")"
-          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-Platform-FreeRTOS EDP-BoundedTopology EDP-Threading; do
+          for repo in EDP-Clock EDP-Primitives EDP-Memory EDP-System EDP-Platform EDP-Platform-FreeRTOS EDP-BoundedTopology EDP-Threading; do
             git clone --depth 1 --branch main "https://github.com/ESPressio-Development-Platform/${repo}.git" "${parent}/${repo}"
           done
       - name: Build CommandLifecycle Arduino
