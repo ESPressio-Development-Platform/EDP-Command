@@ -28,6 +28,7 @@ static_assert(
 );
 
 namespace C = ESPressio::Command;
+namespace S = ESPressio::System;
 
 /// Test-local outcome for a selected local Dispatch operation.
 enum class LocalOutcome : std::uint8_t {
@@ -43,18 +44,41 @@ enum class RemoteOutcome : std::uint8_t {
 
 /// Test-local Request used to verify explicit inbound local admission.
 struct ScopeRequest final {
+    static constexpr S::TypeIdentifier Identifier{
+        S::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x02U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x01U
+        }
+    };
+
     /// Example payload value.
-    int Value{0};
+    std::int32_t Value{0};
+
+    using Fields = S::FieldSet<
+        S::FieldBinding<&ScopeRequest::Value, 0U>
+    >;
 };
 
 /// Test-local Command declaration used by InboundAdmission.
 struct ScopeCommand final {
+    static constexpr S::TypeIdentifier Identifier{
+        S::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x02U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x02U
+        }
+    };
+
+    using Fields = S::FieldSet<>;
+    using Family = C::Family;
+
     /// Request Type used by this test Command.
     using Request = ScopeRequest;
 
     /// Response Type used by this test Command.
-    using Response = void;
+    using Response = C::NoResponsePayload;
 };
+
+static_assert(C::CommandType<ScopeCommand>);
 
 /// Minimal local Runtime substitute used only to observe inbound admission calls.
 struct FakeRuntime final {
@@ -64,7 +88,7 @@ struct FakeRuntime final {
     std::size_t DispatchCount{0U};
 
     /// Most recently admitted payload value.
-    int LastValue{0};
+    std::int32_t LastValue{0};
 
     // Local admission operation.
 
