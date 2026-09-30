@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <cstdio>
 
 #include <ESPressio_Command.hpp>
@@ -5,21 +6,56 @@
 
 namespace Command = ESPressio::Command;
 namespace Threading = ESPressio::Threading;
+namespace System = ESPressio::System;
 namespace Composition = ESPressio::System::CompositionFramework;
 
 struct AddRequest final {
-    int Left;
-    int Right;
+    static constexpr System::TypeIdentifier Identifier{
+        System::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x20U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x01U
+        }
+    };
+
+    std::int32_t Left{0};
+    std::int32_t Right{0};
+
+    using Fields = System::FieldSet<
+        System::FieldBinding<&AddRequest::Left, 0U>,
+        System::FieldBinding<&AddRequest::Right, 1U>
+    >;
 };
 
 struct AddResponse final {
-    int Value;
+    static constexpr System::TypeIdentifier Identifier{
+        System::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x20U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x02U
+        }
+    };
+
+    std::int32_t Value{0};
+
+    using Fields = System::FieldSet<
+        System::FieldBinding<&AddResponse::Value, 0U>
+    >;
 };
 
 struct Add final {
+    static constexpr System::TypeIdentifier Identifier{
+        System::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x20U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x03U
+        }
+    };
+
+    using Fields = System::FieldSet<>;
+    using Family = Command::Family;
     using Request = AddRequest;
     using Response = AddResponse;
 };
+
+static_assert(Command::CommandType<Add>);
 
 class AddHandler final : public Composition::Provider<
     Command::Composition::Domain,
@@ -82,6 +118,6 @@ int main() {
         return 5;
     }
 
-    std::printf("20 + 22 = %d\n", response.Take().Value);
+    std::printf("20 + 22 = %d\n", static_cast<int>(response.Take().Value));
     return 0;
 }
