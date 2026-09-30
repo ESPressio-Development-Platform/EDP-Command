@@ -1,8 +1,27 @@
 # Dependency Contracts
 
-## EDP-Primitives — mandatory execution-domain vocabulary dependency
+## EDP-System — mandatory schema and Composition dependency
 
-Command consumes the canonical family-neutral `Primitives::ExecutionDomain::LocalOnly`, `RemoteOnly`, and `LocalAndRemote` Types plus the `Scope<TScope>` concept. `CommandTypes.hpp` re-exports those exact Types in the Command namespace and aliases the canonical concept so callers retain Command-oriented spelling without creating parallel semantic Types. Command retains ownership of `DispatchScoped`, local admission behaviour, and Command-specific result semantics.
+EDP-System owns the universal semantic schema vocabulary consumed by Command:
+
+- `TypeIdentifier`;
+- `FieldIdentifier`;
+- `FieldBinding`;
+- `FieldSet`;
+- `SchemaType`.
+
+Every Command operation is schema-bearing through `Primitives::PrimitiveType`, and every Command Request/Response immediately satisfies `System::SchemaType` in the Stage-A prerequisite contract.
+
+EDP-System also supplies the Composition Framework. `Composition.hpp` defines the Command domain and exclusive per-Command Handler capability; `Bootstrap.hpp` resolves exactly one same-domain Handler provider and exactly one external-domain bounded wait/wake provider from immutable application Architecture.
+
+## EDP-Primitives — mandatory family and scope dependency
+
+Command consumes two independent foundational responsibilities from EDP-Primitives:
+
+1. Primitive-family/schema classification: `PrimitiveFamilyIdentifier`, `PrimitiveFamilyType` and schema-bearing `PrimitiveType` underpin `Command::Family` and `CommandType`.
+2. execution-domain scope vocabulary: `Primitives::ExecutionDomain::LocalOnly`, `RemoteOnly`, `LocalAndRemote` and `Scope<TScope>` are re-exported in the Command namespace.
+
+Command retains ownership of Handler/lifecycle/admission/response semantics and `DispatchScoped`; EDP-Primitives does not own Command runtime behaviour.
 
 ## EDP-Memory — mandatory production dependency
 
@@ -10,17 +29,13 @@ Command consumes `ObjectLifetime` to construct/move/destroy Request and Response
 
 ## EDP-Clock — mandatory production vocabulary dependency
 
-`CommandTypes.hpp` aliases EDP-Clock `Duration` and `MonotonicTimestamp`. Command does not select or own a clock provider in the implemented v1 Runtime; the dependency supplies canonical cross-domain time types without creating timing/scheduling ownership.
-
-## EDP-System — mandatory Composition/Architecture dependency
-
-`Composition.hpp` defines the Command domain and exclusive per-Command Handler capability using EDP-System Composition Framework contracts. `Bootstrap.hpp` resolves exactly one same-domain Handler provider and exactly one external-domain bounded wait/wake provider from the immutable application Architecture. Command does not mutate topology after initialization.
+`CommandTypes.hpp` aliases EDP-Clock `Duration` and `MonotonicTimestamp`. Command does not select or own a clock provider in the implemented Runtime; the dependency supplies canonical cross-domain time Types without creating timing/scheduling ownership.
 
 ## EDP-Threading — mandatory external wait/wake dependency
 
-Command consumes the EDP-Threading `BoundedWaitWake` capability and its strongly typed `BoundedWaitWakeResult`. The application owns the concrete provider; Command Bootstrap borrows it after Architecture resolution. Provider `Capacity` must be at least the Command `ResourcePlan::InvocationCapacity`, ensuring every bounded invocation record has a corresponding wait/wake slot. Command uses this provider for finite non-consuming `WaitFor`/`WaitUntil` and terminal wake publication; it does not create threads or claim Threading scheduler ownership.
+Command consumes the EDP-Threading `BoundedWaitWake` capability and its strongly typed `BoundedWaitWakeResult`. Application owns the concrete provider; Command Bootstrap borrows it after Architecture resolution. Provider `Capacity` must be at least `ResourcePlan::InvocationCapacity`, ensuring every bounded invocation record has a corresponding wait/wake slot.
 
-EDP-Threading itself consumes EDP-Memory for its typed lifetime/ownership abstractions. Command must not bypass either abstraction with direct Standard Library ownership-transfer operations.
+Command uses this provider for finite non-consuming `WaitFor`/`WaitUntil` and terminal wake publication; it does not create threads or claim Threading scheduler ownership.
 
 ## EDP-Platform — demo/concrete-provider dependency, not Command ownership
 
@@ -28,8 +43,10 @@ PlatformIO/Arduino demonstrations use EDP-Platform FreeRTOS synchronization as t
 
 ## Deliberate non-dependencies
 
-Transport, Serialisation and Security are intentionally absent. Inbound adapters retain remote correlation and use `InboundAdmission`; outbound integrations receive invocation-specific completion capability. The F4 scope vocabulary introduces only the foundational EDP-Primitives dependency; `DispatchScoped` still coordinates caller-selected operations without defining Transport/provider/destination Types or a routing registry. This preserves dependency direction and keeps Command transport-agnostic.
+Transport, Serialisation and Security remain intentionally absent in Stage A. Inbound adapters retain remote correlation and use `InboundAdmission`; outbound integrations receive invocation-specific completion capability. `DispatchScoped` coordinates caller-selected operations without defining Transport/provider/destination Types or a routing registry.
+
+`EDP-Serialisation` will become relevant only in the separately ordered Stage-C tightening after it exists: Primitives will universally require `SerialisableType`, and Command Request/Response will be constrained to that same canonical concept. No temporary or duplicate serialisability abstraction is introduced here.
 
 ## Test/demo dependencies
 
-The PlatformIO demonstrations reference coherent sibling EDP repositories so workstream branches can be built together. Those paths are demonstration/build configuration, not additional Command runtime ownership contracts.
+Branch validation uses the matching `EDP-Primitives/serialisation_prerequisites` branch while this cross-repository contract migration is in progress; `main` validation continues to use `EDP-Primitives/main`. Other sibling dependencies remain on their current main branches unless a tranche-specific dependency branch is explicitly required.
