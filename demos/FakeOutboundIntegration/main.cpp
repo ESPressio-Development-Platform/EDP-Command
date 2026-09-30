@@ -1,19 +1,36 @@
 #include <cassert>
+#include <cstdint>
+
 #include <ESPressio_Command.hpp>
 
 namespace C = ESPressio::Command;
+namespace S = ESPressio::System;
 
 struct Response final {
-    int Value;
-    explicit Response(int value) noexcept : Value(value) {}
+    static constexpr S::TypeIdentifier Identifier{
+        S::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x11U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x01U
+        }
+    };
+
+    std::int32_t Value;
+
+    using Fields = S::FieldSet<
+        S::FieldBinding<&Response::Value, 0U>
+    >;
+
+    explicit Response(std::int32_t value) noexcept : Value(value) {}
     Response(Response&&) noexcept = default;
     Response(const Response&) = delete;
     ~Response() noexcept = default;
 };
 
+static_assert(S::SchemaType<Response>);
+
 struct State final {
     bool Completed{false};
-    int Value{0};
+    std::int32_t Value{0};
 };
 
 static C::CompletionPublicationResult Complete(void* context, C::Outcome outcome, Response* response) noexcept {
