@@ -1,5 +1,6 @@
 #pragma once
 
+#include "command/CommandFamily.hpp"
 #include "command/CommandTypes.hpp"
 #include "command/Composition.hpp"
 #include "command/ResourcePlan.hpp"
