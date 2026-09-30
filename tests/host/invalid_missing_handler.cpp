@@ -1,12 +1,13 @@
 #include <ESPressio_Command.hpp>
 
+#include "EmptyCommandFixture.hpp"
+
 namespace C = ESPressio::Command;
 namespace T = ESPressio::Threading;
 namespace CF = ESPressio::System::CompositionFramework;
+namespace F = ESPressio::Command::Tests::Fixtures;
 
-struct Request final {};
-struct Response final {};
-struct Command final { using Request = ::Request; using Response = ::Response; };
+using Command = F::EmptyCommand;
 
 struct WaitProvider final : CF::Provider<
     T::Domain,
