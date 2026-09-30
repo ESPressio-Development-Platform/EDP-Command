@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <cstdio>
 
 #include <ESPressio_Command.hpp>
@@ -5,28 +6,64 @@
 
 namespace Command = ESPressio::Command;
 namespace Threading = ESPressio::Threading;
+namespace System = ESPressio::System;
 namespace Composition = ESPressio::System::CompositionFramework;
 
 struct Request final {
-    int Value;
-    explicit Request(int value) noexcept : Value(value) {}
+    static constexpr System::TypeIdentifier Identifier{
+        System::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x10U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x01U
+        }
+    };
+
+    std::int32_t Value;
+
+    using Fields = System::FieldSet<
+        System::FieldBinding<&Request::Value, 0U>
+    >;
+
+    explicit Request(std::int32_t value) noexcept : Value(value) {}
     Request(Request&&) noexcept = default;
     Request(const Request&) = delete;
     ~Request() noexcept = default;
 };
 
 struct Response final {
-    int Value;
-    explicit Response(int value) noexcept : Value(value) {}
+    static constexpr System::TypeIdentifier Identifier{
+        System::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x10U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x02U
+        }
+    };
+
+    std::int32_t Value;
+
+    using Fields = System::FieldSet<
+        System::FieldBinding<&Response::Value, 0U>
+    >;
+
+    explicit Response(std::int32_t value) noexcept : Value(value) {}
     Response(Response&&) noexcept = default;
     Response(const Response&) = delete;
     ~Response() noexcept = default;
 };
 
 struct DoubleCommand final {
+    static constexpr System::TypeIdentifier Identifier{
+        System::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x10U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x03U
+        }
+    };
+
+    using Fields = System::FieldSet<>;
+    using Family = Command::Family;
     using Request = ::Request;
     using Response = ::Response;
 };
+
+static_assert(Command::CommandType<DoubleCommand>);
 
 struct DoubleHandler final : Composition::Provider<
     Command::Composition::Domain,
@@ -74,7 +111,7 @@ extern "C" void app_main() {
         return;
     }
 
-    std::printf("response=%d\n", response.Take().Value);
+    std::printf("response=%d\n", static_cast<int>(response.Take().Value));
     handle.Release();
     static_cast<void>(runtime.BeginQuiesce());
 }
