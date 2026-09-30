@@ -75,6 +75,8 @@ require_compile_failure("invalid_missing_handler.cpp", "missing handler rejected
 require_compile_failure("invalid_duplicate_handler.cpp", "duplicate handler rejected at compile time")
 require_compile_failure("invalid_scope_void_operation.cpp", "void scoped operation rejected at compile time")
 require_compile_failure("invalid_scope_throwing_operation.cpp", "throwing scoped operation rejected at compile time")
+require_compile_failure("invalid_command_missing_schema.cpp", "anonymous Command rejected at compile time")
+require_compile_failure("invalid_request_missing_schema.cpp", "non-schema Request rejected at compile time")
 
 compile_and_run("resource_measurement.cpp", "command-resource-measurement")
 print("PASS: deterministic host resource measurement")
