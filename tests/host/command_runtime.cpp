@@ -1,15 +1,59 @@
 #include <cassert>
+#include <cstdint>
 #include <type_traits>
 
 #include <ESPressio_Command.hpp>
 
 namespace C = ESPressio::Command;
 namespace T = ESPressio::Threading;
+namespace S = ESPressio::System;
 namespace CF = ESPressio::System::CompositionFramework;
 
-struct EchoRequest final { int Value; };
-struct EchoResponse final { int Value; };
-struct Echo final { using Request = EchoRequest; using Response = EchoResponse; };
+struct EchoRequest final {
+    static constexpr S::TypeIdentifier Identifier{
+        S::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x01U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x01U
+        }
+    };
+
+    std::int32_t Value{0};
+
+    using Fields = S::FieldSet<
+        S::FieldBinding<&EchoRequest::Value, 0U>
+    >;
+};
+
+struct EchoResponse final {
+    static constexpr S::TypeIdentifier Identifier{
+        S::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x01U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x02U
+        }
+    };
+
+    std::int32_t Value{0};
+
+    using Fields = S::FieldSet<
+        S::FieldBinding<&EchoResponse::Value, 0U>
+    >;
+};
+
+struct Echo final {
+    static constexpr S::TypeIdentifier Identifier{
+        S::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x01U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x03U
+        }
+    };
+
+    using Fields = S::FieldSet<>;
+    using Family = C::Family;
+    using Request = EchoRequest;
+    using Response = EchoResponse;
+};
+
+static_assert(C::CommandType<Echo>);
 
 struct EchoHandler final : CF::Provider<C::Composition::Domain, CF::Offers<CF::Offer<C::Composition::Handler<Echo>>>> {
     C::ExecutionResult<EchoResponse> Execute(const EchoRequest& request, C::CancellationToken cancellation) noexcept {
