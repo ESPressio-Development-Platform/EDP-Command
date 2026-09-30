@@ -1,12 +1,15 @@
 #include <ESPressio_Command.hpp>
 
+#include "EmptyCommandFixture.hpp"
+
 namespace C = ESPressio::Command;
 namespace T = ESPressio::Threading;
 namespace CF = ESPressio::System::CompositionFramework;
+namespace F = ESPressio::Command::Tests::Fixtures;
 
-struct Request final {};
-struct Response final {};
-struct Command final { using Request = ::Request; using Response = ::Response; };
+using Request = F::EmptyRequest;
+using Response = F::EmptyResponse;
+using Command = F::EmptyCommand;
 
 struct HandlerA final : CF::Provider<C::Composition::Domain, CF::Offers<CF::Offer<C::Composition::Handler<Command>>>> {
     C::ExecutionResult<Response> Execute(const Request&, C::CancellationToken) noexcept {
