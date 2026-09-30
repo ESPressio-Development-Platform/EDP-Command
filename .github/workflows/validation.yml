@@ -2,7 +2,7 @@ name: Validation
 
 on:
   push:
-    branches: [main]
+    branches: [main, serialisation_prerequisites]
   pull_request:
 
 jobs:
@@ -20,9 +20,14 @@ jobs:
         run: |
           set -euo pipefail
           parent="$(dirname "$GITHUB_WORKSPACE")"
-          for repo in EDP-Clock EDP-Primitives EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading; do
+          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading; do
             git clone --depth 1 --branch main "https://github.com/ESPressio-Development-Platform/${repo}.git" "${parent}/${repo}"
           done
+          primitives_ref="main"
+          if [[ "${GITHUB_REF_NAME}" == "serialisation_prerequisites" || "${GITHUB_HEAD_REF:-}" == "serialisation_prerequisites" ]]; then
+            primitives_ref="serialisation_prerequisites"
+          fi
+          git clone --depth 1 --branch "${primitives_ref}" "https://github.com/ESPressio-Development-Platform/EDP-Primitives.git" "${parent}/EDP-Primitives"
       - name: Run host contract suite
         env:
           CXX: ${{ matrix.compiler }}
@@ -38,9 +43,14 @@ jobs:
         run: |
           set -euo pipefail
           parent="$(dirname "$GITHUB_WORKSPACE")"
-          for repo in EDP-Clock EDP-Primitives EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading; do
+          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading; do
             git clone --depth 1 --branch main "https://github.com/ESPressio-Development-Platform/${repo}.git" "${parent}/${repo}"
           done
+          primitives_ref="main"
+          if [[ "${GITHUB_REF_NAME}" == "serialisation_prerequisites" || "${GITHUB_HEAD_REF:-}" == "serialisation_prerequisites" ]]; then
+            primitives_ref="serialisation_prerequisites"
+          fi
+          git clone --depth 1 --branch "${primitives_ref}" "https://github.com/ESPressio-Development-Platform/EDP-Primitives.git" "${parent}/EDP-Primitives"
       - name: Run ASan and UBSan host suite
         env:
           CXX: g++
@@ -62,9 +72,14 @@ jobs:
         run: |
           set -euo pipefail
           parent="$(dirname "$GITHUB_WORKSPACE")"
-          for repo in EDP-Clock EDP-Primitives EDP-Memory EDP-System EDP-Platform EDP-Platform-FreeRTOS EDP-BoundedTopology EDP-Threading; do
+          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-Platform-FreeRTOS EDP-BoundedTopology EDP-Threading; do
             git clone --depth 1 --branch main "https://github.com/ESPressio-Development-Platform/${repo}.git" "${parent}/${repo}"
           done
+          primitives_ref="main"
+          if [[ "${GITHUB_REF_NAME}" == "serialisation_prerequisites" || "${GITHUB_HEAD_REF:-}" == "serialisation_prerequisites" ]]; then
+            primitives_ref="serialisation_prerequisites"
+          fi
+          git clone --depth 1 --branch "${primitives_ref}" "https://github.com/ESPressio-Development-Platform/EDP-Primitives.git" "${parent}/EDP-Primitives"
       - name: Build CommandLifecycle Arduino
         run: pio run -d demos/CommandLifecycle/PlatformIO_Arduino
       - name: Build CommandLifecycle ESP-IDF
