@@ -1,32 +1,69 @@
 #include <Arduino.h>
+#include <cstdint>
 
 #include <ESPressio_Command.hpp>
 #include <ESPressio_Platform_FreeRTOS.hpp>
 
 namespace Command = ESPressio::Command;
 namespace Threading = ESPressio::Threading;
+namespace System = ESPressio::System;
 namespace Composition = ESPressio::System::CompositionFramework;
 
 struct Request final {
-    int Value;
-    explicit Request(int value) noexcept : Value(value) {}
+    static constexpr System::TypeIdentifier Identifier{
+        System::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x10U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x01U
+        }
+    };
+
+    std::int32_t Value;
+
+    using Fields = System::FieldSet<
+        System::FieldBinding<&Request::Value, 0U>
+    >;
+
+    explicit Request(std::int32_t value) noexcept : Value(value) {}
     Request(Request&&) noexcept = default;
     Request(const Request&) = delete;
     ~Request() noexcept = default;
 };
 
 struct Response final {
-    int Value;
-    explicit Response(int value) noexcept : Value(value) {}
+    static constexpr System::TypeIdentifier Identifier{
+        System::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x10U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x02U
+        }
+    };
+
+    std::int32_t Value;
+
+    using Fields = System::FieldSet<
+        System::FieldBinding<&Response::Value, 0U>
+    >;
+
+    explicit Response(std::int32_t value) noexcept : Value(value) {}
     Response(Response&&) noexcept = default;
     Response(const Response&) = delete;
     ~Response() noexcept = default;
 };
 
 struct DoubleCommand final {
+    static constexpr System::TypeIdentifier Identifier{
+        System::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x10U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x03U
+        }
+    };
+
+    using Fields = System::FieldSet<>;
+    using Family = Command::Family;
     using Request = ::Request;
     using Response = ::Response;
 };
+
+static_assert(Command::CommandType<DoubleCommand>);
 
 struct DoubleHandler final : Composition::Provider<
     Command::Composition::Domain,
@@ -75,7 +112,7 @@ void setup() {
         return;
     }
 
-    Serial.printf("response=%d\n", response.Take().Value);
+    Serial.printf("response=%ld\n", static_cast<long>(response.Take().Value));
     handle.Release();
     static_cast<void>(runtime.BeginQuiesce());
 }
