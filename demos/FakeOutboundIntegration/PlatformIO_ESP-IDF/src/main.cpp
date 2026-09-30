@@ -1,19 +1,36 @@
+#include <cstdint>
 #include <cstdio>
+
 #include <ESPressio_Command.hpp>
 
 namespace Command = ESPressio::Command;
+namespace System = ESPressio::System;
 
 struct Response final {
-    int Value;
-    explicit Response(int value) noexcept : Value(value) {}
+    static constexpr System::TypeIdentifier Identifier{
+        System::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x11U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x01U
+        }
+    };
+
+    std::int32_t Value;
+
+    using Fields = System::FieldSet<
+        System::FieldBinding<&Response::Value, 0U>
+    >;
+
+    explicit Response(std::int32_t value) noexcept : Value(value) {}
     Response(Response&&) noexcept = default;
     Response(const Response&) = delete;
     ~Response() noexcept = default;
 };
 
+static_assert(System::SchemaType<Response>);
+
 struct State final {
     bool Completed{false};
-    int Value{0};
+    std::int32_t Value{0};
 };
 
 Command::CompletionPublicationResult Complete(
@@ -54,6 +71,6 @@ extern "C" void app_main() {
         "first=%u second=%u value=%d\n",
         static_cast<unsigned>(first),
         static_cast<unsigned>(second),
-        state.Value
+        static_cast<int>(state.Value)
     );
 }
