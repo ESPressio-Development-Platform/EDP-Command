@@ -1,14 +1,63 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+
 #include <ESPressio_Command.hpp>
 
 namespace C = ESPressio::Command;
+namespace S = ESPressio::System;
 
-struct Request final { std::uint32_t Value{0U}; };
-struct Response final { std::uint32_t Value{0U}; };
-struct Command final { using Request = ::Request; using Response = ::Response; };
-struct Executor final { C::ExecutionResult<Response> Execute(const Request& request, C::CancellationToken) noexcept { return C::ExecutionResult<Response>::Succeeded(Response{request.Value}); } };
+struct Request final {
+    static constexpr S::TypeIdentifier Identifier{
+        S::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x04U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x01U
+        }
+    };
+
+    std::uint32_t Value{0U};
+
+    using Fields = S::FieldSet<
+        S::FieldBinding<&Request::Value, 0U>
+    >;
+};
+
+struct Response final {
+    static constexpr S::TypeIdentifier Identifier{
+        S::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x04U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x02U
+        }
+    };
+
+    std::uint32_t Value{0U};
+
+    using Fields = S::FieldSet<
+        S::FieldBinding<&Response::Value, 0U>
+    >;
+};
+
+struct Command final {
+    static constexpr S::TypeIdentifier Identifier{
+        S::TypeIdentifier::Storage{
+            0x00U, 0xFEU, 0x04U,
+            0x00U, 0x00U, 0x00U, 0x00U, 0x03U
+        }
+    };
+
+    using Fields = S::FieldSet<>;
+    using Family = C::Family;
+    using Request = ::Request;
+    using Response = ::Response;
+};
+
+static_assert(C::CommandType<Command>);
+
+struct Executor final {
+    C::ExecutionResult<Response> Execute(const Request& request, C::CancellationToken) noexcept {
+        return C::ExecutionResult<Response>::Succeeded(Response{request.Value});
+    }
+};
 
 template<std::size_t TCapacity>
 struct MeasurementWaitProvider final {
