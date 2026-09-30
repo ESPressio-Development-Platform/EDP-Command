@@ -1,5 +1,6 @@
 #pragma once
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -7,6 +8,8 @@
 #include <ESPressio_Clock.hpp>
 #include <ESPressio_Memory.hpp>
 #include <ESPressio_Primitives.hpp>
+
+#include "CommandFamily.hpp"
 
 namespace ESPressio::Command {
 
@@ -118,6 +121,41 @@ namespace ESPressio::Command {
     template<class TScope>
     concept ExecutionDomainScope = Primitives::ExecutionDomain::Scope<TScope>;
 
+    /// Canonical zero-field Request Type for Commands that require no application input payload.
+    struct NoRequestPayload final {
+
+        /// Stable ESPressio-governed Type identity in the Command family Type subspace.
+        inline static constexpr System::TypeIdentifier Identifier{
+            System::TypeIdentifier::Storage{
+                0x00U, 0x00U, 0x01U,
+                0x01U, 0x00U, 0x00U, 0x00U, 0x01U
+            }
+        };
+
+        /// Explicit zero-field schema.
+        using Fields = System::FieldSet<>;
+
+    };
+
+    /// Canonical zero-field Response Type for Commands that return no application payload.
+    struct NoResponsePayload final {
+
+        /// Stable ESPressio-governed Type identity in the Command family Type subspace.
+        inline static constexpr System::TypeIdentifier Identifier{
+            System::TypeIdentifier::Storage{
+                0x00U, 0x00U, 0x01U,
+                0x01U, 0x00U, 0x00U, 0x00U, 0x02U
+            }
+        };
+
+        /// Explicit zero-field schema.
+        using Fields = System::FieldSet<>;
+
+    };
+
+    static_assert(System::SchemaType<NoRequestPayload>);
+    static_assert(System::SchemaType<NoResponsePayload>);
+
     /// Snapshot of one invocation's observable lifecycle and terminal semantics.
     struct InvocationObservation final {
 
@@ -175,13 +213,23 @@ namespace ESPressio::Command {
     template<class TCommand>
     using Response = typename TCommand::Response;
 
-    /// Requires a Command declaration to expose Request and Response types.
-    /// @tparam TCommand Candidate Command declaration.
+    /// Requires one semantic Command operation to satisfy the complete Stage-A contract.
+    ///
+    /// A Command is itself a schema-bearing Primitive in Command::Family. Request and Response
+    /// are independent schema-bearing semantic data Types, including the explicit zero-field
+    /// NoRequestPayload and NoResponsePayload Types.
+    ///
+    /// @tparam TCommand Candidate Command operation Type.
     template<class TCommand>
-    concept CommandType = requires {
-        typename TCommand::Request;
-        typename TCommand::Response;
-    };
+    concept CommandType =
+        Primitives::PrimitiveType<TCommand> &&
+        std::same_as<typename TCommand::Family, Family> &&
+        requires {
+            typename TCommand::Request;
+            typename TCommand::Response;
+        } &&
+        System::SchemaType<typename TCommand::Request> &&
+        System::SchemaType<typename TCommand::Response>;
 
     /// Read-only cooperative cancellation view supplied to a Command Handler.
     class CancellationToken final {
@@ -290,6 +338,10 @@ namespace ESPressio::Command {
     };
 
     /// Typed result returned by a void-response Command Handler.
+    ///
+    /// Retained for source compatibility of the generic result utility itself; `void` is not a
+    /// valid Response Type for CommandType. Commands with no application response payload use
+    /// `NoResponsePayload`.
     template<>
     class ExecutionResult<void> final {
     private:
