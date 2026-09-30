@@ -4,22 +4,78 @@ Deterministic, bounded Command dispatch and execution for the ESPressio Developm
 
 EDP-Command lets an application submit typed work to a compile-time-bound handler, observe/cancel it through a move-only Handle, wait for terminal state with a finite timeout, and take a typed response. Runtime topology and capacity are fixed before initialization; there is no runtime service registry or Command-runtime heap allocation.
 
+## Semantic Command contract
+
+Every Command operation is a first-class ESPressio Primitive in `Command::Family` and therefore satisfies the platform `System::SchemaType` contract.
+
+A Command operation has three deliberately distinct semantic Types:
+
+1. the Command operation Type itself;
+2. its Request Type;
+3. its Response Type.
+
+Each has its own stable `System::TypeIdentifier`. The Command operation normally has no data members and therefore declares `System::FieldSet<>`; concrete Request/Response payloads declare their own `FieldSet` and stable numeric `FieldBinding`s.
+
+Commands with no application request or response payload use the distinct canonical zero-field schema Types:
+
+- `Command::NoRequestPayload`;
+- `Command::NoResponsePayload`.
+
+`void`, anonymous request/response structs, and Request/Response-only operation declarations are not valid `CommandType`s.
+
+During the current Serialisation prerequisite tranche, Command does not yet depend on EDP-Serialisation. The later locked Stage-C tightening will require serialisability for every Primitive and for Command Request/Response Types once `EDP-Serialisation` provides the canonical concept.
+
 ## Build a minimal Command application
 
-A local Command needs a Request/Response pair, a Command type, one persistent handler, an EDP-Threading bounded wait provider, and an application Architecture tying those domains together.
+A local Command needs schema-bearing Request/Response Types, a schema-bearing Command Primitive, one persistent handler, an EDP-Threading bounded wait provider, and an application Architecture tying those domains together.
 
 ### 1. Declare the Command
 
 ```cpp
-struct AddRequest { int Left; int Right; };
-struct AddResponse { int Value; };
-struct Add final { using Request = AddRequest; using Response = AddResponse; };
+#include <cstdint>
+#include <ESPressio_Command.hpp>
+
+namespace Command = ESPressio::Command;
+namespace System = ESPressio::System;
+
+struct AddRequest final {
+    static constexpr System::TypeIdentifier Identifier = /* explicit stable identity */;
+
+    std::int32_t Left{0};
+    std::int32_t Right{0};
+
+    using Fields = System::FieldSet<
+        System::FieldBinding<&AddRequest::Left, 0U>,
+        System::FieldBinding<&AddRequest::Right, 1U>
+    >;
+};
+
+struct AddResponse final {
+    static constexpr System::TypeIdentifier Identifier = /* explicit stable identity */;
+
+    std::int32_t Value{0};
+
+    using Fields = System::FieldSet<
+        System::FieldBinding<&AddResponse::Value, 0U>
+    >;
+};
+
+struct Add final {
+    static constexpr System::TypeIdentifier Identifier = /* explicit stable operation identity */;
+    using Fields = System::FieldSet<>;
+    using Family = Command::Family;
+    using Request = AddRequest;
+    using Response = AddResponse;
+};
+
+static_assert(Command::CommandType<Add>);
 ```
+
+Numeric Field identifiers are authoritative. Member declaration order, source location, names, hashes, RTTI and compiler metadata do not manufacture Command schema identity.
 
 ### 2. Declare its handler
 
 ```cpp
-namespace Command = ESPressio::Command;
 namespace Composition = ESPressio::System::CompositionFramework;
 
 class AddHandler final : public Composition::Provider<
@@ -42,7 +98,7 @@ public:
 };
 ```
 
-`Handler<Add>` is exclusive: the Architecture must resolve exactly one provider for this Command type.
+`Handler<Add>` is exclusive: the Architecture must resolve exactly one provider for this Command Type.
 
 ### 3. Provide bounded waiting
 
@@ -116,11 +172,11 @@ if (handle.WaitFor(Command::Duration{}) != Command::WaitResult::Terminal) {
 
 auto response = handle.TakeResponse();
 if (response.HasValue()) {
-    std::printf("result=%d\n", response.Take().Value);
+    std::printf("result=%d\n", static_cast<int>(response.Take().Value));
 }
 ```
 
-`Accepted()` and `HasValue()` are predicates. Operations that can fail or produce multiple operational outcomes use dedicated result types. `WaitFor` and `WaitUntil` are finite and non-consuming. Repeated waits on a terminal Handle return `Terminal`; provider interruption is reported as `Interrupted`; and authoritative terminal state wins a simultaneous timeout/wake race.
+`Accepted()` and `HasValue()` are predicates. Operations that can fail or produce multiple operational outcomes use dedicated result Types. `WaitFor` and `WaitUntil` are finite and non-consuming. Repeated waits on a terminal Handle return `Terminal`; provider interruption is reported as `Interrupted`; authoritative terminal state wins a simultaneous timeout/wake race.
 
 The complete source is [`examples/HelloCommand/main.cpp`](./examples/HelloCommand/main.cpp).
 
@@ -138,7 +194,7 @@ Cancellation request outcomes are `Requested`, `AlreadyRequested`, `TooLate`, an
 
 ## Per-call execution-domain scope
 
-The locked F4 integration policy is available through the compile-time `LocalOnly`, `RemoteOnly`, and `LocalAndRemote` scope Types. Ordinary `Runtime::Dispatch(request)` remains naturally local-only. Higher routing/integration code may use `DispatchScoped` to coordinate already-selected local and remote operations without giving Command responsibility for provider selection, destinations or Transport.
+The locked integration policy is available through the compile-time `LocalOnly`, `RemoteOnly`, and `LocalAndRemote` scope Types. Ordinary `Runtime::Dispatch(request)` remains naturally local-only. Higher routing/integration code may use `DispatchScoped` to coordinate already-selected local and remote operations without giving Command responsibility for provider selection, destinations or Transport.
 
 `LocalOnly` and `RemoteOnly` preserve the scalar result returned by the selected domain operation. `LocalAndRemote` returns structurally separate `Local()` and `Remote()` outcomes with no aggregate success, rollback, fallback, suppression or cross-domain ordering semantic.
 
@@ -146,14 +202,14 @@ See [Execution-Domain Dispatch Scope](./docs/EXECUTION-DOMAIN-SCOPE.MD) for the 
 
 ## Integration boundary
 
-EDP-Command does not depend on Transport, Serialisation or Security. Inbound adapters use `InboundAdmission`; outbound adapters receive narrow invocation/completion capabilities and retain their own correlation identity. Completion publication is a fallible operation and returns `CompletionPublicationResult` (`Accepted`, `AlreadyCompleted`, or `Unavailable`) rather than a Boolean.
+EDP-Command does not depend on Transport, Serialisation or Security in this Stage-A prerequisite branch. Inbound adapters use `InboundAdmission`; outbound adapters receive narrow invocation/completion capabilities and retain their own correlation identity. Completion publication is a fallible operation and returns `CompletionPublicationResult` (`Accepted`, `AlreadyCompleted`, or `Unavailable`) rather than a Boolean.
 
 ## Dependencies
 
 ```text
 EDP-Command
-  +-- EDP-System      Composition, Architecture and provider resolution
-  +-- EDP-Primitives  canonical execution-domain scope vocabulary
+  +-- EDP-System      schema identity, Composition, Architecture and provider resolution
+  +-- EDP-Primitives  Command family/Primitive contract and execution-domain scope vocabulary
   +-- EDP-Memory      typed object lifetime and ownership transfer
   +-- EDP-Threading   bounded finite wait/wake capability
   `-- EDP-Clock       Duration / MonotonicTimestamp vocabulary
@@ -169,4 +225,12 @@ See [DEPENDENCY_GRAPH.MD](./DEPENDENCY_GRAPH.MD).
 
 ## Repository acceptance
 
-`tests/run_tests.py` builds the host lifecycle/Architecture contract, F4 execution-domain-scope contract, compile-time negative contracts and deterministic resource-measurement suites. `CXX` selects the host compiler and optional `CXXFLAGS` are appended for validation configurations such as sanitizers. `demos/CommandLifecycle` exercises Composition/Architecture/Bootstrap, execution, finite terminal waiting, response extraction and quiescence. `demos/FakeOutboundIntegration` exercises exactly-once integration completion without inventing a Transport architecture. `demos/ExecutionDomainScope` demonstrates independent local/remote scoped dispatch in every Policy-required target form. Representative GitHub Actions definitions live under `.github/workflows`, while current Policy makes RPI400 the authoritative executable validation appliance.
+`tests/run_tests.py` builds the host lifecycle/Architecture contract, execution-domain-scope contract, compile-time negative contracts and deterministic resource-measurement suites. Negative coverage includes rejection of anonymous Commands and non-schema Request payloads. `CXX` selects the host compiler and optional `CXXFLAGS` are appended for sanitizer configurations.
+
+`demos/CommandLifecycle` exercises schema-bearing operation/payload contracts plus Composition/Architecture/Bootstrap, execution, finite terminal waiting, response extraction and quiescence. `demos/FakeOutboundIntegration` uses a schema-bearing response payload while exercising exactly-once integration completion. `demos/ExecutionDomainScope` demonstrates independent local/remote scoped dispatch.
+
+The branch validation workflow runs g++, clang++, ASan/UBSan and maintained PlatformIO Arduino/ESP-IDF demo builds. Complete RPI400 validation is intentionally deferred while that appliance is occupied by the Remote System implementation tranche.
+
+## Version
+
+This prerequisite reconciliation does not mutate the library version; EDP-Command remains `0.1.0`.
