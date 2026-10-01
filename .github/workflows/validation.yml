@@ -20,7 +20,7 @@ jobs:
         run: |
           set -euo pipefail
           parent="$(dirname "$GITHUB_WORKSPACE")"
-          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading; do
+          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading EDP-Serialisation EDP-BoundedTypes EDP-Platform-Portable; do
             git clone --depth 1 --branch main "https://github.com/ESPressio-Development-Platform/${repo}.git" "${parent}/${repo}"
           done
           primitives_ref="main"
@@ -43,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           parent="$(dirname "$GITHUB_WORKSPACE")"
-          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading; do
+          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-BoundedTopology EDP-Threading EDP-Serialisation EDP-BoundedTypes EDP-Platform-Portable; do
             git clone --depth 1 --branch main "https://github.com/ESPressio-Development-Platform/${repo}.git" "${parent}/${repo}"
           done
           primitives_ref="main"
@@ -72,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           parent="$(dirname "$GITHUB_WORKSPACE")"
-          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-Platform-FreeRTOS EDP-BoundedTopology EDP-Threading; do
+          for repo in EDP-Clock EDP-Memory EDP-System EDP-Platform EDP-Platform-FreeRTOS EDP-BoundedTopology EDP-Threading EDP-Serialisation EDP-BoundedTypes EDP-Platform-Portable; do
             git clone --depth 1 --branch main "https://github.com/ESPressio-Development-Platform/${repo}.git" "${parent}/${repo}"
           done
           primitives_ref="main"

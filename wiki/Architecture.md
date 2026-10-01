@@ -6,11 +6,11 @@ One semantic operation is one Command Primitive Type.
 
 Every valid Command:
 
-- satisfies `Primitives::PrimitiveType` and therefore `System::SchemaType`;
+- satisfies `Primitives::PrimitiveType` and therefore both `System::SchemaType` and `Serialisation::SerialisableType`;
 - declares `Family = Command::Family`;
 - owns a stable universal TypeIdentifier identifying the operation contract;
 - normally declares `System::FieldSet<>` because operation payload data lives in Request/Response Types;
-- explicitly declares schema-bearing `Request` and `Response` Types.
+- explicitly declares serialisable schema-bearing `Request` and `Response` Types.
 
 Command, Request and Response identities are deliberately separate. Request/Response are ordinary semantic data Types, not independently deployed Primitive Types. Numeric `System::FieldIdentifier` values are authoritative for their schema-visible members.
 
@@ -18,7 +18,7 @@ Command, Request and Response identities are deliberately separate. Request/Resp
 
 `Command::Family` is the stable ESPressio Command Primitive family under ESPressio Type Authority 1. Stage A restores this semantic family association while preserving the existing Bootstrap/Runtime execution architecture.
 
-EDP-Serialisation is not a Stage-A dependency. The later locked Stage-C pass adds intrinsic serialisability after the Serialisation concept exists.
+EDP-Serialisation is now a direct compile-time dependency for `SerialisableType`; Command still owns no codec, wire profile, parser, or buffer behavior.
 
 ## Composition and Bootstrap
 

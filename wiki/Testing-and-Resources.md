@@ -4,10 +4,10 @@ The v1 acceptance gate is intentionally broader than compilation.
 
 Host coverage verifies admission capacity, lifecycle transitions, cancellation, finite waiting, Handle move/release/retention, exactly-once Response extraction, shutdown/quiescence, terminal Outcome observation, Handler success/rejection/failure, LocalOnly/RemoteOnly/LocalAndRemote scope semantics and fake outbound completion.
 
-The Serialisation prerequisite contract adds compile-time proof that:
+The Stage-C serialisability contract adds compile-time proof that:
 
 - a Command operation must itself be a schema-bearing Primitive in `Command::Family`;
-- Request and Response Types are schema-bearing;
+- Request and Response Types are schema-bearing and serialisable;
 - an anonymous Request/Response-only Command is rejected;
 - a Command carrying a non-schema Request is rejected;
 - missing/duplicate Handler tests remain schema-valid first, so they continue failing for the Handler contract they are intended to verify rather than being masked by the schema gate.

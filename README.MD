@@ -6,7 +6,7 @@ EDP-Command lets an application submit typed work to a compile-time-bound handle
 
 ## Semantic Command contract
 
-Every Command operation is a first-class ESPressio Primitive in `Command::Family` and therefore satisfies the platform `System::SchemaType` contract.
+Every Command operation is a first-class ESPressio Primitive in `Command::Family` and therefore satisfies both `System::SchemaType` and `Serialisation::SerialisableType`.
 
 A Command operation has three deliberately distinct semantic Types:
 
@@ -23,11 +23,11 @@ Commands with no application request or response payload use the distinct canoni
 
 `void`, anonymous request/response structs, and Request/Response-only operation declarations are not valid `CommandType`s.
 
-During the current Serialisation prerequisite tranche, Command does not yet depend on EDP-Serialisation. The later locked Stage-C tightening will require serialisability for every Primitive and for Command Request/Response Types once `EDP-Serialisation` provides the canonical concept.
+Stage C is now active: Command directly consumes `EDP-Serialisation` and requires the operation, Request, and Response contracts to be serialisable. Codec/wire/buffer mechanics remain outside Command.
 
 ## Build a minimal Command application
 
-A local Command needs schema-bearing Request/Response Types, a schema-bearing Command Primitive, one persistent handler, an EDP-Threading bounded wait provider, and an application Architecture tying those domains together.
+A local Command needs serialisable schema-bearing Request/Response Types, a serialisable schema-bearing Command Primitive, one persistent handler, an EDP-Threading bounded wait provider, and an application Architecture tying those domains together.
 
 ### 1. Declare the Command
 
@@ -202,7 +202,7 @@ See [Execution-Domain Dispatch Scope](./docs/EXECUTION-DOMAIN-SCOPE.MD) for the 
 
 ## Integration boundary
 
-EDP-Command does not depend on Transport, Serialisation or Security in this Stage-A prerequisite branch. Inbound adapters use `InboundAdmission`; outbound adapters receive narrow invocation/completion capabilities and retain their own correlation identity. Completion publication is a fallible operation and returns `CompletionPublicationResult` (`Accepted`, `AlreadyCompleted`, or `Unavailable`) rather than a Boolean.
+EDP-Command does not depend on Transport or Security. It depends directly on EDP-Serialisation only for semantic `SerialisableType` qualification. Inbound adapters use `InboundAdmission`; outbound adapters receive narrow invocation/completion capabilities and retain their own correlation identity. Completion publication is a fallible operation and returns `CompletionPublicationResult` (`Accepted`, `AlreadyCompleted`, or `Unavailable`) rather than a Boolean.
 
 ## Dependencies
 

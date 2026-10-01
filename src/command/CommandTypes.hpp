@@ -8,6 +8,7 @@
 #include <ESPressio_Clock.hpp>
 #include <ESPressio_Memory.hpp>
 #include <ESPressio_Primitives.hpp>
+#include <serialisation/SerialisableType.hpp>
 
 #include "CommandFamily.hpp"
 
@@ -154,7 +155,9 @@ namespace ESPressio::Command {
     };
 
     static_assert(System::SchemaType<NoRequestPayload>);
+    static_assert(Serialisation::SerialisableType<NoRequestPayload>);
     static_assert(System::SchemaType<NoResponsePayload>);
+    static_assert(Serialisation::SerialisableType<NoResponsePayload>);
 
     /// Snapshot of one invocation's observable lifecycle and terminal semantics.
     struct InvocationObservation final {
@@ -215,8 +218,8 @@ namespace ESPressio::Command {
 
     /// Requires one semantic Command operation to satisfy the complete Stage-A contract.
     ///
-    /// A Command is itself a schema-bearing Primitive in Command::Family. Request and Response
-    /// are independent schema-bearing semantic data Types, including the explicit zero-field
+    /// A Command is itself a serialisable schema-bearing Primitive in Command::Family. Request and Response
+    /// are independent serialisable schema-bearing semantic data Types, including the explicit zero-field
     /// NoRequestPayload and NoResponsePayload Types.
     ///
     /// @tparam TCommand Candidate Command operation Type.
@@ -229,7 +232,9 @@ namespace ESPressio::Command {
             typename TCommand::Response;
         } &&
         System::SchemaType<typename TCommand::Request> &&
-        System::SchemaType<typename TCommand::Response>;
+        Serialisation::SerialisableType<typename TCommand::Request> &&
+        System::SchemaType<typename TCommand::Response> &&
+        Serialisation::SerialisableType<typename TCommand::Response>;
 
     /// Read-only cooperative cancellation view supplied to a Command Handler.
     class CancellationToken final {

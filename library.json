@@ -3,18 +3,59 @@
   "description": "Deterministic bounded Command dispatch and execution for the ESPressio Development Platform",
   "keywords": "espressio,command,dispatch,execution,bounded,embedded",
   "homepage": "https://espressio.org",
-  "authors": {"name":"Simon J. Stuart","maintainer":true,"url":"https://espressio.org"},
-  "build": {"flags":["-std=gnu++20"],"unflags":["-std=gnu++11","-std=gnu++14","-std=gnu++17"]},
-  "repository": {"type":"git","url":"https://github.com/ESPressio-Development-Platform/EDP-Command.git"},
+  "authors": {
+    "name": "Simon J. Stuart",
+    "maintainer": true,
+    "url": "https://espressio.org"
+  },
+  "build": {
+    "flags": [
+      "-std=gnu++20"
+    ],
+    "unflags": [
+      "-std=gnu++11",
+      "-std=gnu++14",
+      "-std=gnu++17"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ESPressio-Development-Platform/EDP-Command.git"
+  },
   "version": "0.1.0",
   "license": "Apache-2.0",
   "frameworks": "*",
   "platforms": "*",
   "dependencies": [
-    {"name":"EDP-System","version":"https://github.com/ESPressio-Development-Platform/EDP-System.git#main","platforms":"*"},
-    {"name":"EDP-Primitives","version":"https://github.com/ESPressio-Development-Platform/EDP-Primitives.git#main","platforms":"*"},
-    {"name":"EDP-Memory","version":"https://github.com/ESPressio-Development-Platform/EDP-Memory.git#main","platforms":"*"},
-    {"name":"EDP-Threading","version":"https://github.com/ESPressio-Development-Platform/EDP-Threading.git#main","platforms":"*"},
-    {"name":"EDP-Clock","version":"https://github.com/ESPressio-Development-Platform/EDP-Clock.git#main","platforms":"*"}
+    {
+      "name": "EDP-System",
+      "version": "https://github.com/ESPressio-Development-Platform/EDP-System.git#main",
+      "platforms": "*"
+    },
+    {
+      "name": "EDP-Primitives",
+      "version": "https://github.com/ESPressio-Development-Platform/EDP-Primitives.git#main",
+      "platforms": "*"
+    },
+    {
+      "name": "EDP-Memory",
+      "version": "https://github.com/ESPressio-Development-Platform/EDP-Memory.git#main",
+      "platforms": "*"
+    },
+    {
+      "name": "EDP-Threading",
+      "version": "https://github.com/ESPressio-Development-Platform/EDP-Threading.git#main",
+      "platforms": "*"
+    },
+    {
+      "name": "EDP-Clock",
+      "version": "https://github.com/ESPressio-Development-Platform/EDP-Clock.git#main",
+      "platforms": "*"
+    },
+    {
+      "name": "EDP-Serialisation",
+      "version": "https://github.com/ESPressio-Development-Platform/EDP-Serialisation.git#main",
+      "platforms": "*"
+    }
   ]
 }

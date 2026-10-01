@@ -16,6 +16,9 @@ repositories = {
     "EDP-Command": root,
     "EDP-Clock": workspace / "EDP-Clock",
     "EDP-Primitives": workspace / "EDP-Primitives",
+    "EDP-Serialisation": workspace / "EDP-Serialisation",
+    "EDP-BoundedTypes": workspace / "EDP-BoundedTypes",
+    "EDP-Platform-Portable": workspace / "EDP-Platform-Portable",
     "EDP-Memory": workspace / "EDP-Memory",
     "EDP-System": workspace / "EDP-System",
     "EDP-Platform": workspace / "EDP-Platform",
@@ -77,6 +80,8 @@ require_compile_failure("invalid_scope_void_operation.cpp", "void scoped operati
 require_compile_failure("invalid_scope_throwing_operation.cpp", "throwing scoped operation rejected at compile time")
 require_compile_failure("invalid_command_missing_schema.cpp", "anonymous Command rejected at compile time")
 require_compile_failure("invalid_request_missing_schema.cpp", "non-schema Request rejected at compile time")
+require_compile_failure("invalid_request_non_serialisable.cpp", "non-serialisable Request rejected at compile time")
+require_compile_failure("invalid_response_non_serialisable.cpp", "non-serialisable Response rejected at compile time")
 
 compile_and_run("resource_measurement.cpp", "command-resource-measurement")
 print("PASS: deterministic host resource measurement")

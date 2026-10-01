@@ -10,7 +10,7 @@ EDP-System owns the universal semantic schema vocabulary consumed by Command:
 - `FieldSet`;
 - `SchemaType`.
 
-Every Command operation is schema-bearing through `Primitives::PrimitiveType`, and every Command Request/Response immediately satisfies `System::SchemaType` in the Stage-A prerequisite contract.
+Every Command operation is serialisable/schema-bearing through `Primitives::PrimitiveType`; every Request/Response satisfies both `System::SchemaType` and `Serialisation::SerialisableType`.
 
 EDP-System also supplies the Composition Framework. `Composition.hpp` defines the Command domain and exclusive per-Command Handler capability; `Bootstrap.hpp` resolves exactly one same-domain Handler provider and exactly one external-domain bounded wait/wake provider from immutable application Architecture.
 
@@ -18,7 +18,7 @@ EDP-System also supplies the Composition Framework. `Composition.hpp` defines th
 
 Command consumes two independent foundational responsibilities from EDP-Primitives:
 
-1. Primitive-family/schema classification: `PrimitiveFamilyIdentifier`, `PrimitiveFamilyType` and schema-bearing `PrimitiveType` underpin `Command::Family` and `CommandType`.
+1. Primitive-family/schema classification: `PrimitiveFamilyIdentifier`, `PrimitiveFamilyType` and serialisable schema-bearing `PrimitiveType` underpin `Command::Family` and `CommandType`.
 2. execution-domain scope vocabulary: `Primitives::ExecutionDomain::LocalOnly`, `RemoteOnly`, `LocalAndRemote` and `Scope<TScope>` are re-exported in the Command namespace.
 
 Command retains ownership of Handler/lifecycle/admission/response semantics and `DispatchScoped`; EDP-Primitives does not own Command runtime behaviour.
@@ -41,12 +41,14 @@ Command uses this provider for finite non-consuming `WaitFor`/`WaitUntil` and te
 
 PlatformIO/Arduino demonstrations use EDP-Platform FreeRTOS synchronization as the concrete provider underlying EDP-Threading `BoundedWaitWakeProvider`. This is an application/demo Composition choice rather than a new Command-domain provider ownership contract.
 
+## EDP-Serialisation — mandatory semantic qualification dependency
+
+Command directly consumes the public `SerialisableType` predicate for Request/Response qualification. Primitive operation serialisability is inherited through EDP-Primitives. Command does not consume codec operations, wire profiles, parser state, Localisation, or caller buffers.
+
 ## Deliberate non-dependencies
 
-Transport, Serialisation and Security remain intentionally absent in Stage A. Inbound adapters retain remote correlation and use `InboundAdmission`; outbound integrations receive invocation-specific completion capability. `DispatchScoped` coordinates caller-selected operations without defining Transport/provider/destination Types or a routing registry.
-
-`EDP-Serialisation` will become relevant only in the separately ordered Stage-C tightening after it exists: Primitives will universally require `SerialisableType`, and Command Request/Response will be constrained to that same canonical concept. No temporary or duplicate serialisability abstraction is introduced here.
+Transport and Security remain intentionally absent. Inbound adapters retain remote correlation and use `InboundAdmission`; outbound integrations receive invocation-specific completion capability. `DispatchScoped` coordinates caller-selected operations without defining Transport/provider/destination Types or a routing registry.
 
 ## Test/demo dependencies
 
-Branch validation uses the matching `EDP-Primitives/serialisation_prerequisites` branch while this cross-repository contract migration is in progress; `main` validation continues to use `EDP-Primitives/main`. Other sibling dependencies remain on their current main branches unless a tranche-specific dependency branch is explicitly required.
+Stage-C validation consumes `EDP-Primitives/main` after the universal Primitive serialisability checkpoint. Other sibling dependencies remain on their current main branches unless a tranche-specific dependency branch is explicitly required.

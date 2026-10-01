@@ -2,7 +2,7 @@
 
 ## Scope and ownership
 
-EDP-Command owns the semantic Command Primitive family, bounded local Command admission, invocation lifecycle, execution, cancellation, finite local waiting, response retention/extraction and narrow integration-facing admission/completion capabilities. It deliberately does not own Transport, Serialisation, Security, remote correlation, scheduling or provider discovery.
+EDP-Command owns the semantic Command Primitive family, bounded local Command admission, invocation lifecycle, execution, cancellation, finite local waiting, response retention/extraction and narrow integration-facing admission/completion capabilities. It deliberately does not own Transport, Serialisation codec mechanics, Security, remote correlation, scheduling or provider discovery.
 
 ## Semantic Command and payload schema contract
 
@@ -14,7 +14,7 @@ Every valid `CommandType<TCommand>`:
 - therefore has a stable universal `System::TypeIdentifier` and canonical `System::FieldSet`;
 - declares `Family = Command::Family`;
 - explicitly declares `Request` and `Response` Types;
-- requires both Request and Response to satisfy `System::SchemaType`.
+- requires both Request and Response to satisfy `System::SchemaType` and `Serialisation::SerialisableType`.
 
 The operation Type identifies the operation contract itself. It normally contains no payload members and therefore uses `System::FieldSet<>`.
 
@@ -25,13 +25,13 @@ Command defines two distinct canonical zero-payload Types:
 - `Command::NoRequestPayload`;
 - `Command::NoResponsePayload`.
 
-Both are real identified zero-field `System::SchemaType`s. They are intentionally not `void`, `std::monostate`, one shared empty marker, or exceptions to the schema contract.
+Both are real identified zero-field Types satisfying both `System::SchemaType` and `Serialisation::SerialisableType`. They are intentionally not `void`, `std::monostate`, one shared empty marker, or exceptions to the schema contract.
 
 No compiler-generated identity, name hashing, RTTI, source location, member order or runtime registration participates in the semantic contract. Numeric `System::FieldIdentifier` is authoritative for payload Field identity.
 
 `Command::Family` is the stable ESPressio Command Primitive family under ESPressio Type Authority 1. The current Stage-A reconciliation restores semantic family association without redesigning the already-maintained Bootstrap/Runtime deployment mechanics.
 
-EDP-Command has no Stage-A dependency on EDP-Serialisation. Once EDP-Serialisation exists, the separately locked Stage-C tightening will require universal Primitive serialisability plus serialisable Command Request/Response Types.
+EDP-Command now directly depends on EDP-Serialisation for the canonical compile-time `SerialisableType` predicate. Universal Primitive serialisability arrives through EDP-Primitives; Command additionally constrains Request and Response directly.
 
 ## Composition and Bootstrap
 
@@ -101,7 +101,7 @@ Integration payload Types shown by maintained demonstrations are schema-bearing 
 
 EDP-System owns TypeIdentifier/FieldIdentifier/FieldBinding/FieldSet/SchemaType and the compile-time Composition/Architecture framework. EDP-Primitives supplies Command's Primitive-family classification and canonical execution-domain scope. EDP-Memory is mandatory for typed lifetime and ownership-transfer operations. EDP-Clock supplies `Duration` and `MonotonicTimestamp`. EDP-Threading supplies the external bounded finite wait/wake capability. EDP-Platform and EDP-BoundedTopology are inherited through the Threading dependency chain.
 
-Command does not acquire Transport, Security or Serialisation responsibilities during Stage A.
+Command does not acquire Transport, Security, codec, parser, or wire-format responsibilities from this dependency.
 
 ## Validation
 

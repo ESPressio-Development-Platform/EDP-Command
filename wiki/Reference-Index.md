@@ -14,7 +14,7 @@ This is the exhaustive production-source reference index for the current `src` s
 
 **PUBLIC API.** Defines/aliases `Duration`, `MonotonicTimestamp`; `InvocationState`, `Outcome`, `ExecutionFailure`, `DispatchFailure`, `WaitResult`, `CancellationRequestResult`, `TakeResponseStatus`, `CompletionPublicationResult`, `InitializationResult`, `ExecutionAttemptResult`, `QuiesceResult`, `RuntimeState`; canonical schema-bearing `NoRequestPayload` and `NoResponsePayload`; re-exported Primitive scope Types `LocalOnly`, `RemoteOnly`, `LocalAndRemote` plus `ExecutionDomainScope`; `InvocationObservation`; `Request<TCommand>`, `Response<TCommand>`, `CommandType`; `CancellationToken`; and `ExecutionResult<TResponse>` / `ExecutionResult<void>`.
 
-`CommandType` requires a schema-bearing `Primitives::PrimitiveType`, exact `Command::Family`, and schema-bearing Request/Response Types. See [Public API](Public-API) and [Private Implementation](Private-Implementation).
+`CommandType` requires a serialisable schema-bearing `Primitives::PrimitiveType`, exact `Command::Family`, and Request/Response Types satisfying both `SchemaType` and `SerialisableType`. See [Public API](Public-API) and [Private Implementation](Private-Implementation).
 
 ## `src/command/Composition.hpp`
 

@@ -11,15 +11,15 @@ All declarations below are **PUBLIC API** unless explicitly stated otherwise. So
 - `Primitives::PrimitiveType<TCommand>`;
 - `TCommand::Family` is exactly `Command::Family`;
 - nested `Request` and `Response` Types exist;
-- both Request and Response satisfy `System::SchemaType`.
+- both Request and Response satisfy `System::SchemaType` and `Serialisation::SerialisableType`.
 
-Because `PrimitiveType` is schema-bearing on the prerequisite branch, a valid Command operation directly declares its stable `System::TypeIdentifier` and canonical `Fields` Type. Operation Types normally use `System::FieldSet<>`.
+Because `PrimitiveType` is now serialisable and schema-bearing, a valid Command operation directly declares its stable `System::TypeIdentifier` and canonical `Fields` Type. Operation Types normally use `System::FieldSet<>`.
 
 Request and Response are independent semantic schema Types with identities distinct from the Command operation. Payload members use explicit stable numeric `System::FieldBinding`s.
 
-`NoRequestPayload` and `NoResponsePayload` are separate identified zero-field `System::SchemaType`s. They are the canonical no-payload contracts; `void` is not a valid semantic Request/Response Type for `CommandType`.
+`NoRequestPayload` and `NoResponsePayload` are separate identified zero-field Types satisfying both `System::SchemaType` and `Serialisation::SerialisableType`. They are the canonical no-payload contracts; `void` is not a valid semantic Request/Response Type for `CommandType`.
 
-The current Stage-A API does not yet depend on `EDP-Serialisation`. Universal serialisability is introduced in the separately locked Stage-C pass after the Serialisation concept exists.
+The Stage-C API directly consumes `EDP-Serialisation` for Request/Response `SerialisableType` qualification; no codec execution is owned here.
 
 ## Vocabulary
 
