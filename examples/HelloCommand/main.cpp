@@ -80,8 +80,12 @@ using WaitProvider = Threading::BoundedWaitWakeProvider<
     ESPressio::Platform::FreeRTOS::Synchronization::SignalProvider,
     4U
 >;
+using CommandMutex = Threading::OrdinaryMutexProvider<
+    Command::Composition::RuntimeMutexIdentity,
+    ESPressio::Platform::FreeRTOS::Synchronization::MutexProvider
+>;
 using ApplicationCommands = Composition::Composition<Command::Composition::Domain, AddHandler>;
-using ApplicationThreading = Composition::Composition<Threading::Domain, WaitProvider>;
+using ApplicationThreading = Composition::Composition<Threading::Domain, WaitProvider, CommandMutex>;
 using ApplicationArchitecture = Composition::Architecture<ApplicationCommands, ApplicationThreading>;
 using AddBootstrap = Command::Bootstrap<
     Add,
@@ -92,7 +96,8 @@ using AddBootstrap = Command::Bootstrap<
 int main() {
     AddHandler addHandler;
     WaitProvider waits;
-    AddBootstrap addCommand(addHandler, waits);
+    CommandMutex mutex;
+    AddBootstrap addCommand(addHandler, waits, mutex);
 
     if (addCommand.Initialize() != Command::InitializationResult::Initialized) {
         return 1;

@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <concepts>
+#include <exception>
 #include <type_traits>
 
 #include "CommandTypes.hpp"
@@ -46,6 +48,35 @@ namespace ESPressio::Command {
                 ESPressio::Memory::OwnershipTransfer::Move(request)
             );
         }
+
+        /// Reserves a constructed but unpublished Request for transactional inbound population.
+        [[nodiscard]] auto Prepare() noexcept
+        requires std::is_nothrow_default_constructible_v<Request<TCommand>> {
+            return _runtime->PrepareIngress();
+        }
+    };
+
+    /// Typed family-owned facade for synchronized outbound Command handoff staging.
+    ///
+    /// The bound Runtime supplies the same application-owned serialization domain used by Dispatch,
+    /// Handle and cancellation transitions. Reservation retains only a bounded Request borrow and the
+    /// eventual adapter call occurs outside Command synchronization.
+    template<class TCommand, class TRuntime>
+    class OutboundHandoff final {
+    private:
+        TRuntime* _runtime;
+
+    public:
+        explicit OutboundHandoff(TRuntime& runtime) noexcept :
+            _runtime(&runtime) {
+        }
+
+        /// Reserves one bounded stage for a live immutable Request.
+        [[nodiscard]] auto Prepare(const Request<TCommand>& request) noexcept {
+            return _runtime->PrepareRemoteHandoff(request);
+        }
+
+        auto Prepare(Request<TCommand>&&) noexcept = delete;
     };
 
     /// Structurally separate outcomes from one LocalAndRemote scoped Dispatch.
@@ -53,6 +84,17 @@ namespace ESPressio::Command {
     /// @tparam TRemoteResult Result Type produced by the remote-domain operation.
     template<class TLocalResult, class TRemoteResult>
     class LocalAndRemoteDispatchResult final {
+        static_assert(
+            std::is_nothrow_move_constructible_v<TLocalResult> &&
+            std::is_nothrow_move_constructible_v<TRemoteResult>,
+            "LocalAndRemote results must be non-throwing to move"
+        );
+        static_assert(
+            std::is_nothrow_destructible_v<TLocalResult> &&
+            std::is_nothrow_destructible_v<TRemoteResult>,
+            "LocalAndRemote results must be non-throwing to destroy"
+        );
+
     private:
         // Independently produced domain results.
 
@@ -65,19 +107,12 @@ namespace ESPressio::Command {
     public:
         // Construction.
 
-        /// Invokes each independently selected domain operation exactly once.
-        /// @tparam TLocalOperation Callable producing the local-domain result.
-        /// @tparam TRemoteOperation Callable producing the remote-domain result.
-        template<class TLocalOperation, class TRemoteOperation>
         LocalAndRemoteDispatchResult(
-            TLocalOperation& localOperation,
-            TRemoteOperation& remoteOperation
-        ) noexcept(
-            noexcept(localOperation())
-            && noexcept(remoteOperation())
-        ) :
-            _local(localOperation()),
-            _remote(remoteOperation()) {
+            TLocalResult local,
+            TRemoteResult remote
+        ) noexcept :
+            _local(ESPressio::Memory::OwnershipTransfer::Move(local)),
+            _remote(ESPressio::Memory::OwnershipTransfer::Move(remote)) {
         }
 
         /// Combined results cannot be copied because either domain result may own an exclusive capability.
@@ -89,8 +124,10 @@ namespace ESPressio::Command {
         /// Transfers both independent domain results when their Types permit movement.
         LocalAndRemoteDispatchResult(LocalAndRemoteDispatchResult&&) noexcept = default;
 
-        /// Transfers both independent domain results when their Types permit move assignment.
-        LocalAndRemoteDispatchResult& operator=(LocalAndRemoteDispatchResult&&) noexcept = default;
+        /// Transfers both independent domain results when non-throwing move assignment is available.
+        LocalAndRemoteDispatchResult& operator=(LocalAndRemoteDispatchResult&&) noexcept
+        requires std::is_nothrow_move_assignable_v<TLocalResult> &&
+            std::is_nothrow_move_assignable_v<TRemoteResult> = default;
 
         // Domain-result access.
 
@@ -155,10 +192,9 @@ namespace ESPressio::Command {
         return remoteOperation();
     }
 
-    /// Independently invokes one already-selected local operation and one higher-layer remote operation.
+    /// Invokes local admission first, then independently invokes one higher-layer remote operation.
     ///
-    /// Invocation sequence is an implementation detail and creates no cross-domain ordering, transaction,
-    /// rollback, fallback, suppression, quorum or aggregate-success contract.
+    /// Local refusal does not suppress the remote operation and asynchronous local execution is not awaited.
     /// @tparam TLocalOperation Callable implementing the local-domain Dispatch operation.
     /// @tparam TRemoteOperation Callable implementing the higher integration/routing remote-domain Dispatch operation.
     template<class TLocalOperation, class TRemoteOperation>
@@ -187,11 +223,213 @@ namespace ESPressio::Command {
             "LocalAndRemote Dispatch requires an observable remote-domain result"
         );
 
+        auto local = localOperation();
+        auto remote = remoteOperation();
         return LocalAndRemoteDispatchResult<LocalResult, RemoteResult>(
-            localOperation,
-            remoteOperation
+            ESPressio::Memory::OwnershipTransfer::Move(local),
+            ESPressio::Memory::OwnershipTransfer::Move(remote)
         );
     }
+
+    /// Commits one synchronized typed remote-only stage outside Command serialization.
+    template<CommandType TCommand, class TRuntime, class TRemoteOperation>
+    [[nodiscard]] auto DispatchScoped(
+        RemoteOnly,
+        RemoteHandoffReservation<TCommand, TRuntime>&& reservation,
+        TRemoteOperation& remoteOperation
+    ) noexcept {
+        return reservation.Commit(remoteOperation);
+    }
+
+    /// Performs local admission before committing one independent synchronized remote stage.
+    template<
+        CommandType TCommand,
+        class TRuntime,
+        class TLocalOperation,
+        class TRemoteOperation
+    >
+    [[nodiscard]] auto DispatchScoped(
+        LocalAndRemote,
+        RemoteHandoffReservation<TCommand, TRuntime>&& reservation,
+        TLocalOperation& localOperation,
+        TRemoteOperation& remoteOperation
+    ) noexcept {
+        using LocalResult = decltype(localOperation());
+        using RemoteResult = decltype(reservation.Commit(remoteOperation));
+        static_assert(noexcept(localOperation()), "Local Command admission must be non-throwing");
+        static_assert(!std::is_void_v<LocalResult> && !std::is_void_v<RemoteResult>);
+
+        auto local = localOperation();
+        auto remote = reservation.Commit(remoteOperation);
+        return LocalAndRemoteDispatchResult<LocalResult, RemoteResult>(
+            ESPressio::Memory::OwnershipTransfer::Move(local),
+            ESPressio::Memory::OwnershipTransfer::Move(remote)
+        );
+    }
+
+    /// Family-owned semantic correlation for one exact remote Command recipient.
+    ///
+    /// The Delivery identifier Type is supplied by the integration adapter so EDP-Command remains
+    /// Transport-neutral. Invocation, Cancellation and TerminalResult deliveries retain independent
+    /// delivery lifecycles while referring to this same semantic value.
+    template<class TDeliveryIdentifier>
+    requires std::equality_comparable<TDeliveryIdentifier> &&
+        std::is_nothrow_copy_constructible_v<TDeliveryIdentifier> &&
+        requires(const TDeliveryIdentifier& left, const TDeliveryIdentifier& right) {
+            { left == right } noexcept -> std::same_as<bool>;
+        }
+    class CommandInvocationCorrelation final {
+    private:
+        System::Identity::DeviceIdentifier _source;
+        System::Identity::RuntimeIncarnationId _runtime;
+        TDeliveryIdentifier _invocationDelivery;
+
+    public:
+        CommandInvocationCorrelation(
+            const System::Identity::DeviceIdentifier& source,
+            const System::Identity::RuntimeIncarnationId& runtime,
+            const TDeliveryIdentifier& invocationDelivery
+        ) noexcept :
+            _source(source),
+            _runtime(runtime),
+            _invocationDelivery(invocationDelivery) {
+        }
+
+        [[nodiscard]] const System::Identity::DeviceIdentifier& Source() const noexcept {
+            return _source;
+        }
+
+        [[nodiscard]] const System::Identity::RuntimeIncarnationId& Runtime() const noexcept {
+            return _runtime;
+        }
+
+        [[nodiscard]] const TDeliveryIdentifier& InvocationDelivery() const noexcept {
+            return _invocationDelivery;
+        }
+
+        [[nodiscard]] friend bool operator==(
+            const CommandInvocationCorrelation&,
+            const CommandInvocationCorrelation&
+        ) noexcept = default;
+    };
+
+    /// Move-only source-facing semantic operation over a bounded frozen remote recipient set.
+    ///
+    /// TBinding is adapter-owned storage embedded by value in this family surface. It retains exact
+    /// recipient/correlation state and implements generation-safe Observe, finite Wait, cooperative
+    /// cancellation and at-most-once Response extraction. Invocation, Cancellation and TerminalResult
+    /// wire deliveries remain separate adapter concerns; releasing this object abandons observation only.
+    template<CommandType TCommand, class TBinding>
+    requires std::is_nothrow_move_constructible_v<TBinding> &&
+        std::is_nothrow_destructible_v<TBinding>
+    class RemoteCommandOperation final {
+    private:
+        TBinding _binding;
+        bool _valid{true};
+
+        void EnsureValid() const noexcept {
+            if (!_valid) {
+                std::terminate();
+            }
+        }
+
+    public:
+        using Command = TCommand;
+        using Binding = TBinding;
+
+        static_assert(
+            requires(TBinding& binding) {
+                { binding.Release() } noexcept -> std::same_as<void>;
+            },
+            "Remote Command binding must provide non-throwing deterministic release"
+        );
+
+        explicit RemoteCommandOperation(TBinding binding) noexcept :
+            _binding(ESPressio::Memory::OwnershipTransfer::Move(binding)) {
+        }
+
+        RemoteCommandOperation(const RemoteCommandOperation&) = delete;
+        RemoteCommandOperation& operator=(const RemoteCommandOperation&) = delete;
+
+        RemoteCommandOperation(RemoteCommandOperation&& other) noexcept :
+            _binding(ESPressio::Memory::OwnershipTransfer::Move(other._binding)),
+            _valid(other._valid) {
+            other._valid = false;
+        }
+
+        RemoteCommandOperation& operator=(RemoteCommandOperation&&) = delete;
+
+        ~RemoteCommandOperation() noexcept {
+            Release();
+        }
+
+        /// Reports whether this object still retains adapter observation capability.
+        [[nodiscard]] bool IsValid() const noexcept {
+            return _valid;
+        }
+
+        /// Returns the number of recipients frozen into this exact operation.
+        [[nodiscard]] std::size_t RecipientCount() const noexcept {
+            EnsureValid();
+            static_assert(noexcept(_binding.RecipientCount()));
+            return _binding.RecipientCount();
+        }
+
+        /// Returns the binding-defined exact recipient/correlation value at index.
+        [[nodiscard]] decltype(auto) Recipient(std::size_t index) const noexcept {
+            EnsureValid();
+            static_assert(noexcept(_binding.Recipient(index)));
+            return _binding.Recipient(index);
+        }
+
+        /// Returns the binding-defined semantic observation for one recipient.
+        [[nodiscard]] auto Observe(std::size_t index) const noexcept {
+            EnsureValid();
+            static_assert(noexcept(_binding.Observe(index)));
+            return _binding.Observe(index);
+        }
+
+        /// Performs one finite binding-defined wait for a recipient's semantic progress.
+        [[nodiscard]] auto WaitFor(std::size_t index, Duration duration) noexcept {
+            EnsureValid();
+            static_assert(noexcept(_binding.WaitFor(index, duration)));
+            return _binding.WaitFor(index, duration);
+        }
+
+        /// Performs one finite binding-defined wait until a monotonic deadline.
+        [[nodiscard]] auto WaitUntil(
+            std::size_t index,
+            MonotonicTimestamp deadline
+        ) noexcept {
+            EnsureValid();
+            static_assert(noexcept(_binding.WaitUntil(index, deadline)));
+            return _binding.WaitUntil(index, deadline);
+        }
+
+        /// Requests binding-defined cooperative cancellation for exactly one recipient.
+        [[nodiscard]] auto RequestCancellation(std::size_t index) noexcept {
+            EnsureValid();
+            static_assert(noexcept(_binding.RequestCancellation(index)));
+            return _binding.RequestCancellation(index);
+        }
+
+        /// Performs binding-enforced at-most-once Response extraction for one recipient.
+        [[nodiscard]] auto TakeResponse(std::size_t index) noexcept {
+            EnsureValid();
+            static_assert(noexcept(_binding.TakeResponse(index)));
+            return _binding.TakeResponse(index);
+        }
+
+        /// Abandons source observation and deterministically releases the bounded binding once.
+        void Release() noexcept {
+            if (!_valid) {
+                return;
+            }
+
+            _binding.Release();
+            _valid = false;
+        }
+    };
 
     /// Invocation-specific outbound completion capability. It is semantically single-use.
     ///

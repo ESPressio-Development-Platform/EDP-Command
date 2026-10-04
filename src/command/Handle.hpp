@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <type_traits>
 
 #include <ESPressio_Memory.hpp>
@@ -17,6 +18,9 @@ namespace ESPressio::Command {
      */
     template<class TCommand, class TRuntime>
     class DispatchResult;
+
+    template<class TCommand, class TRuntime>
+    class RemoteHandoffReservationResult;
 
     /**
      * @brief Move-only owner for a Response extracted from a terminal invocation.
@@ -337,6 +341,270 @@ namespace ESPressio::Command {
          */
         Handle<TCommand, TRuntime> TakeHandle() noexcept {
             return ESPressio::Memory::OwnershipTransfer::Move(_handle);
+        }
+    };
+
+    /// Move-only owner of one constructed but unpublished inbound Command Request.
+    ///
+    /// The reservation guarantees one invocation record and one queue entitlement. A decoder may
+    /// populate Value() without holding Command synchronization. Commit is the only operation that
+    /// publishes the Request to the execution queue; destruction aborts an uncommitted reservation.
+    ///
+    /// @tparam TCommand Command declaration represented by the reservation.
+    /// @tparam TRuntime Runtime type owning the unpublished invocation record.
+    template<class TCommand, class TRuntime>
+    class InboundReservation final {
+    private:
+        TRuntime* _runtime{nullptr};
+        std::size_t _index{0U};
+        std::uint32_t _generation{0U};
+
+        template<class, class>
+        friend class InboundReservationResult;
+
+        InboundReservation(
+            TRuntime& runtime,
+            std::size_t index,
+            std::uint32_t generation
+        ) noexcept :
+            _runtime(&runtime),
+            _index(index),
+            _generation(generation) {
+        }
+
+    public:
+        InboundReservation() noexcept = default;
+        InboundReservation(const InboundReservation&) = delete;
+        InboundReservation& operator=(const InboundReservation&) = delete;
+
+        InboundReservation(InboundReservation&& other) noexcept :
+            _runtime(other._runtime),
+            _index(other._index),
+            _generation(other._generation) {
+            other._runtime = nullptr;
+        }
+
+        InboundReservation& operator=(InboundReservation&& other) noexcept {
+            if (this == &other) {
+                return *this;
+            }
+
+            Abort();
+            _runtime = other._runtime;
+            _index = other._index;
+            _generation = other._generation;
+            other._runtime = nullptr;
+            return *this;
+        }
+
+        ~InboundReservation() noexcept {
+            Abort();
+        }
+
+        /// Reports whether this object still owns an unpublished Runtime reservation.
+        [[nodiscard]] bool IsValid() const noexcept {
+            return _runtime != nullptr;
+        }
+
+        /// Returns the exclusively owned unpublished Request destination for transactional population.
+        [[nodiscard]] Request<TCommand>& Value() noexcept {
+            return _runtime->IngressRequest(_index, _generation);
+        }
+
+        /// Atomically publishes the populated Request to the execution queue and returns its Handle.
+        [[nodiscard]] DispatchResult<TCommand, TRuntime> Commit() noexcept {
+            if (_runtime == nullptr) {
+                return DispatchResult<TCommand, TRuntime>(DispatchFailure::BindingUnavailable);
+            }
+
+            auto* runtime = _runtime;
+            _runtime = nullptr;
+            return runtime->CommitIngress(_index, _generation);
+        }
+
+        /// Releases the unpublished Request and every reserved entitlement without publishing it.
+        void Abort() noexcept {
+            if (_runtime == nullptr) {
+                return;
+            }
+
+            _runtime->AbortIngress(_index, _generation);
+            _runtime = nullptr;
+        }
+    };
+
+    /// Move-only result of attempting to reserve inbound Command admission backing.
+    ///
+    /// @tparam TCommand Command declaration represented by the reservation.
+    /// @tparam TRuntime Runtime type owning a successful reservation.
+    template<class TCommand, class TRuntime>
+    class InboundReservationResult final {
+    private:
+        bool _accepted{false};
+        DispatchFailure _failure{DispatchFailure::NoCapacity};
+        InboundReservation<TCommand, TRuntime> _reservation{};
+
+    public:
+        explicit InboundReservationResult(DispatchFailure failure) noexcept :
+            _failure(failure) {
+        }
+
+        InboundReservationResult(
+            TRuntime& runtime,
+            std::size_t index,
+            std::uint32_t generation
+        ) noexcept :
+            _accepted(true),
+            _reservation(runtime, index, generation) {
+        }
+
+        InboundReservationResult(const InboundReservationResult&) = delete;
+        InboundReservationResult& operator=(const InboundReservationResult&) = delete;
+        InboundReservationResult(InboundReservationResult&&) noexcept = default;
+        InboundReservationResult& operator=(InboundReservationResult&&) = delete;
+
+        /// Reports whether exact unpublished admission backing was reserved.
+        [[nodiscard]] bool Accepted() const noexcept {
+            return _accepted;
+        }
+
+        /// Returns the reservation failure when Accepted() is false.
+        [[nodiscard]] DispatchFailure Failure() const noexcept {
+            return _failure;
+        }
+
+        /// Transfers exclusive ownership of the unpublished admission reservation.
+        [[nodiscard]] InboundReservation<TCommand, TRuntime> TakeReservation() && noexcept {
+            return ESPressio::Memory::OwnershipTransfer::Move(_reservation);
+        }
+    };
+
+    /// Move-only owner of one synchronized outbound Request handoff stage.
+    ///
+    /// The stage retains only a bounded borrow of the caller-owned Request. Commit invokes the selected
+    /// remote adapter exactly once outside Command synchronization; destruction releases an uncommitted
+    /// stage without calling the adapter. The Request must remain alive and immutable through Commit/Abort.
+    template<class TCommand, class TRuntime>
+    class RemoteHandoffReservation final {
+    private:
+        TRuntime* _runtime{nullptr};
+        std::size_t _index{0U};
+        std::uint32_t _generation{0U};
+
+        template<class, class>
+        friend class RemoteHandoffReservationResult;
+
+        RemoteHandoffReservation(
+            TRuntime& runtime,
+            std::size_t index,
+            std::uint32_t generation
+        ) noexcept :
+            _runtime(&runtime),
+            _index(index),
+            _generation(generation) {
+        }
+
+    public:
+        RemoteHandoffReservation() noexcept = default;
+        RemoteHandoffReservation(const RemoteHandoffReservation&) = delete;
+        RemoteHandoffReservation& operator=(const RemoteHandoffReservation&) = delete;
+
+        RemoteHandoffReservation(RemoteHandoffReservation&& other) noexcept :
+            _runtime(other._runtime),
+            _index(other._index),
+            _generation(other._generation) {
+            other._runtime = nullptr;
+        }
+
+        RemoteHandoffReservation& operator=(RemoteHandoffReservation&& other) noexcept {
+            if (this == &other) {
+                return *this;
+            }
+
+            Abort();
+            _runtime = other._runtime;
+            _index = other._index;
+            _generation = other._generation;
+            other._runtime = nullptr;
+            return *this;
+        }
+
+        ~RemoteHandoffReservation() noexcept {
+            Abort();
+        }
+
+        /// Reports whether this object still owns a synchronized outbound stage.
+        [[nodiscard]] bool IsValid() const noexcept {
+            return _runtime != nullptr;
+        }
+
+        /// Performs one bounded adapter call outside Command synchronization and releases the stage.
+        template<class TRemoteOperation>
+        [[nodiscard]] auto Commit(TRemoteOperation& remoteOperation) noexcept {
+            if (_runtime == nullptr) {
+                std::terminate();
+            }
+
+            auto* runtime = _runtime;
+            _runtime = nullptr;
+            return runtime->CommitRemoteHandoff(
+                _index,
+                _generation,
+                remoteOperation
+            );
+        }
+
+        /// Releases this stage without invoking the remote adapter.
+        void Abort() noexcept {
+            if (_runtime == nullptr) {
+                return;
+            }
+
+            _runtime->AbortRemoteHandoff(_index, _generation);
+            _runtime = nullptr;
+        }
+    };
+
+    /// Move-only result of attempting to reserve a synchronized outbound Request handoff stage.
+    template<class TCommand, class TRuntime>
+    class RemoteHandoffReservationResult final {
+    private:
+        bool _accepted{false};
+        DispatchFailure _failure{DispatchFailure::NoCapacity};
+        RemoteHandoffReservation<TCommand, TRuntime> _reservation{};
+
+    public:
+        explicit RemoteHandoffReservationResult(DispatchFailure failure) noexcept :
+            _failure(failure) {
+        }
+
+        RemoteHandoffReservationResult(
+            TRuntime& runtime,
+            std::size_t index,
+            std::uint32_t generation
+        ) noexcept :
+            _accepted(true),
+            _reservation(runtime, index, generation) {
+        }
+
+        RemoteHandoffReservationResult(const RemoteHandoffReservationResult&) = delete;
+        RemoteHandoffReservationResult& operator=(const RemoteHandoffReservationResult&) = delete;
+        RemoteHandoffReservationResult(RemoteHandoffReservationResult&&) noexcept = default;
+        RemoteHandoffReservationResult& operator=(RemoteHandoffReservationResult&&) = delete;
+
+        /// Reports whether an exact outbound stage was reserved.
+        [[nodiscard]] bool Accepted() const noexcept {
+            return _accepted;
+        }
+
+        /// Returns the reservation failure when Accepted() is false.
+        [[nodiscard]] DispatchFailure Failure() const noexcept {
+            return _failure;
+        }
+
+        /// Transfers exclusive ownership of the synchronized outbound stage.
+        [[nodiscard]] RemoteHandoffReservation<TCommand, TRuntime> TakeReservation() && noexcept {
+            return ESPressio::Memory::OwnershipTransfer::Move(_reservation);
         }
     };
 }

@@ -36,8 +36,17 @@ namespace ESPressio::Command {
         /// Unique application-owned bounded wait/wake provider resolved from Threading.
         using WaitProvider = Composition::WaitProvider<TArchitecture>;
 
+        /// Unique application-owned ordinary mutex provider serializing Command mutation.
+        using MutexProvider = Composition::RuntimeMutexProvider<TArchitecture>;
+
         /// Concrete Runtime type established by the resolved providers and resource plan.
-        using RuntimeType = Runtime<TCommand, HandlerProvider, WaitProvider, TPlan>;
+        using RuntimeType = Runtime<
+            TCommand,
+            HandlerProvider,
+            WaitProvider,
+            MutexProvider,
+            TPlan
+        >;
 
         // Compile-time Architecture validation.
 
@@ -60,6 +69,9 @@ namespace ESPressio::Command {
         /// Application-owned Threading wait provider retained for the Bootstrap lifetime.
         WaitProvider* _waitProvider{nullptr};
 
+        /// Application-owned ordinary mutex retained for the Bootstrap lifetime.
+        MutexProvider* _mutexProvider{nullptr};
+
         /// Command Runtime wired to the resolved application-owned providers.
         RuntimeType _runtime;
 
@@ -69,13 +81,16 @@ namespace ESPressio::Command {
         /// Establishes immutable Runtime wiring over persistent application-owned providers.
         Bootstrap(
             HandlerProvider& handler,
-            WaitProvider& waitProvider
+            WaitProvider& waitProvider,
+            MutexProvider& mutexProvider
         ) noexcept :
             _handler(&handler),
             _waitProvider(&waitProvider),
+            _mutexProvider(&mutexProvider),
             _runtime(
                 handler,
-                waitProvider
+                waitProvider,
+                mutexProvider
             ) {
         }
 
@@ -118,6 +133,11 @@ namespace ESPressio::Command {
         /// Returns the application-owned bounded wait/wake provider bound to this Bootstrap.
         [[nodiscard]] WaitProvider& WaitProviderInstance() noexcept {
             return *_waitProvider;
+        }
+
+        /// Returns the application-owned ordinary mutex used for Runtime serialization.
+        [[nodiscard]] MutexProvider& MutexProviderInstance() noexcept {
+            return *_mutexProvider;
         }
     };
 

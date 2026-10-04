@@ -16,8 +16,20 @@ struct WaitProvider final : CF::Provider<
     static constexpr std::size_t Capacity = 1U;
 };
 
+struct MutexProvider final : CF::Provider<
+    T::Domain,
+    CF::Offers<CF::Offer<T::OrdinaryMutex<C::Composition::RuntimeMutexIdentity>>>
+> {
+    [[nodiscard]] T::OrdinaryMutexAcquireResult Acquire() noexcept {
+        return T::OrdinaryMutexAcquireResult::Acquired;
+    }
+    [[nodiscard]] T::OrdinaryMutexReleaseResult Release() noexcept {
+        return T::OrdinaryMutexReleaseResult::Released;
+    }
+};
+
 using CommandComposition = CF::Composition<C::Composition::Domain>;
-using ThreadingComposition = CF::Composition<T::Domain, WaitProvider>;
+using ThreadingComposition = CF::Composition<T::Domain, WaitProvider, MutexProvider>;
 using Architecture = CF::Architecture<CommandComposition, ThreadingComposition>;
 using Plan = C::ResourcePlan<1U, 0U, 1U>;
 using InvalidBootstrap = C::Bootstrap<Command, Architecture, Plan>;

@@ -27,7 +27,7 @@ Stage C is now active: Command directly consumes `EDP-Serialisation` and require
 
 ## Build a minimal Command application
 
-A local Command needs serialisable schema-bearing Request/Response Types, a serialisable schema-bearing Command Primitive, one persistent handler, an EDP-Threading bounded wait provider, and an application Architecture tying those domains together.
+A local Command needs serialisable schema-bearing Request/Response Types, a serialisable schema-bearing Command Primitive, one persistent handler, an EDP-Threading bounded wait provider, one Command-identity ordinary mutex provider, and an application Architecture tying those domains together.
 
 ### 1. Declare the Command
 
@@ -100,7 +100,7 @@ public:
 
 `Handler<Add>` is exclusive: the Architecture must resolve exactly one provider for this Command Type.
 
-### 3. Provide bounded waiting
+### 3. Provide bounded waiting and Runtime serialization
 
 On ESP32/FreeRTOS a four-slot provider can be declared as:
 
@@ -109,9 +109,14 @@ using WaitProvider = ESPressio::Threading::BoundedWaitWakeProvider<
     ESPressio::Platform::FreeRTOS::Synchronization::SignalProvider,
     4U
 >;
+
+using CommandMutex = ESPressio::Threading::OrdinaryMutexProvider<
+    Command::Composition::RuntimeMutexIdentity,
+    ESPressio::Platform::FreeRTOS::Synchronization::MutexProvider
+>;
 ```
 
-The wait-provider capacity must cover every Command invocation record. Command borrows this application-owned Threading provider; it does not own native FreeRTOS/Platform synchronization itself.
+The wait-provider capacity must cover every Command invocation record. The ordinary mutex serializes only short Runtime transitions; Handler execution, finite waits, wake publication and remote adapter calls occur after it is released. Command borrows both application-owned Threading providers and does not own native FreeRTOS/Platform synchronization itself.
 
 ### 4. Build the immutable application Architecture
 
@@ -122,7 +127,8 @@ using ApplicationCommands = Composition::Composition<
 >;
 using ApplicationThreading = Composition::Composition<
     ESPressio::Threading::Domain,
-    WaitProvider
+    WaitProvider,
+    CommandMutex
 >;
 using ApplicationArchitecture = Composition::Architecture<
     ApplicationCommands,
@@ -136,14 +142,15 @@ using AddBootstrap = Command::Bootstrap<
 >;
 ```
 
-`ResourcePlan<4U, 3U, 1U>` reserves four invocation records, permits three queued invocations and one executing invocation. Bootstrap statically rejects a wait provider whose capacity is smaller than the invocation capacity.
+`ResourcePlan<4U, 3U, 1U>` reserves four invocation records, permits three queued invocations and one executing invocation. Its optional fourth parameter is the number of simultaneous synchronized outbound handoff stages; it defaults to zero for local-only applications. Bootstrap statically rejects a wait provider whose capacity is smaller than the invocation capacity.
 
 ### 5. Construct persistent providers and Bootstrap
 
 ```cpp
 AddHandler addHandler;
 WaitProvider waits;
-AddBootstrap addCommand(addHandler, waits);
+CommandMutex mutex;
+AddBootstrap addCommand(addHandler, waits, mutex);
 
 if (addCommand.Initialize() != Command::InitializationResult::Initialized) {
     return 1;
@@ -196,13 +203,19 @@ Cancellation request outcomes are `Requested`, `AlreadyRequested`, `TooLate`, an
 
 The locked integration policy is available through the compile-time `LocalOnly`, `RemoteOnly`, and `LocalAndRemote` scope Types. Ordinary `Runtime::Dispatch(request)` remains naturally local-only. Higher routing/integration code may use `DispatchScoped` to coordinate already-selected local and remote operations without giving Command responsibility for provider selection, destinations or Transport.
 
-`LocalOnly` and `RemoteOnly` preserve the scalar result returned by the selected domain operation. `LocalAndRemote` returns structurally separate `Local()` and `Remote()` outcomes with no aggregate success, rollback, fallback, suppression or cross-domain ordering semantic.
+`LocalOnly` and `RemoteOnly` preserve the result returned by the selected domain operation. `LocalAndRemote` performs the local admission attempt first, then the independent remote handoff even if local admission failed. It returns structurally separate `Local()` and `Remote()` outcomes with no aggregate success, rollback, fallback, suppression or wait for local Handler completion.
 
 See [Execution-Domain Dispatch Scope](./docs/EXECUTION-DOMAIN-SCOPE.MD) for the complete contract and the [`ExecutionDomainScope` demo](./demos/ExecutionDomainScope/README.MD).
 
 ## Integration boundary
 
-EDP-Command does not depend on Transport or Security. It depends directly on EDP-Serialisation only for semantic `SerialisableType` qualification. Inbound adapters use `InboundAdmission`; outbound adapters receive narrow invocation/completion capabilities and retain their own correlation identity. Completion publication is a fallible operation and returns `CompletionPublicationResult` (`Accepted`, `AlreadyCompleted`, or `Unavailable`) rather than a Boolean.
+EDP-Command does not depend on Transport or Security. It depends directly on EDP-Serialisation only for semantic `SerialisableType` qualification.
+
+Inbound adapters use `InboundAdmission::Prepare()` to reserve a constructed but unpublished Request and exact queue/invocation entitlement. Validation and population happen without the Command mutex; `Commit()` alone makes the invocation visible to application execution. Destruction or `Abort()` rolls the reservation back.
+
+Outbound adapters use `OutboundHandoff::Prepare()` to reserve one plan-bounded Request-borrow stage under the same application mutex. The stage calls the adapter once outside Command synchronization and releases immediately, so no Request borrow survives a successful bounded adapter call. `CommandInvocationCorrelation` provides the strong semantic key—authenticated source Device/runtime plus original invocation delivery identifier—while Invocation, Cancellation and TerminalResult remain distinct delivery lifecycles. `RemoteCommandOperation<TCommand,TBinding>` is the move-only family surface over a binding's frozen recipients, per-recipient observation, finite waits, cancellation and at-most-once Response extraction.
+
+Destination Mesh workers may reserve, decode and commit inbound Commands, but application-owned execution contexts alone call `ExecuteOne`; a Mesh worker never runs a Command Handler. Existing `OutboundCompletion` remains the single-use terminal publication capability and returns `CompletionPublicationResult` (`Accepted`, `AlreadyCompleted`, or `Unavailable`) rather than a Boolean.
 
 ## Dependencies
 
@@ -210,8 +223,9 @@ EDP-Command does not depend on Transport or Security. It depends directly on EDP
 EDP-Command
   +-- EDP-System      schema identity, Composition, Architecture and provider resolution
   +-- EDP-Primitives  Command family/Primitive contract and execution-domain scope vocabulary
+  +-- EDP-Serialisation serialisable semantic Type qualification
   +-- EDP-Memory      typed object lifetime and ownership transfer
-  +-- EDP-Threading   bounded finite wait/wake capability
+  +-- EDP-Threading   bounded finite wait/wake and ordinary mutex capabilities
   `-- EDP-Clock       Duration / MonotonicTimestamp vocabulary
 ```
 
@@ -225,12 +239,12 @@ See [DEPENDENCY_GRAPH.MD](./DEPENDENCY_GRAPH.MD).
 
 ## Repository acceptance
 
-`tests/run_tests.py` builds the host lifecycle/Architecture contract, execution-domain-scope contract, compile-time negative contracts and deterministic resource-measurement suites. Negative coverage includes rejection of anonymous Commands and non-schema Request payloads. `CXX` selects the host compiler and optional `CXXFLAGS` are appended for sanitizer configurations.
+`tests/run_tests.py` builds the host lifecycle/Architecture contract, real-thread concurrency contract, execution-domain-scope contract, compile-time negative contracts and deterministic resource-measurement suites. Negative coverage includes rejection of anonymous Commands, non-schema Request payloads, throwing scoped operations and throwing combined-result movement. `CXX` selects the host compiler and optional `CXXFLAGS` are appended for sanitizer configurations.
 
 `demos/CommandLifecycle` exercises schema-bearing operation/payload contracts plus Composition/Architecture/Bootstrap, execution, finite terminal waiting, response extraction and quiescence. `demos/FakeOutboundIntegration` uses a schema-bearing response payload while exercising exactly-once integration completion. `demos/ExecutionDomainScope` demonstrates independent local/remote scoped dispatch.
 
-The branch validation workflow runs g++, clang++, ASan/UBSan and maintained PlatformIO Arduino/ESP-IDF demo builds. Complete RPI400 validation is intentionally deferred while that appliance is occupied by the Remote System implementation tranche.
+The branch validation workflow runs g++, clang++, ASan/UBSan and maintained PlatformIO Arduino/ESP-IDF demo builds. Independent appliance validation and any physical flash/runtime evidence are recorded separately; a successful build is not a physical-device claim.
 
 ## Version
 
-This prerequisite reconciliation does not mutate the library version; EDP-Command remains `0.1.0`.
+The Serialisation prerequisite and Mesh V1 family-seam work do not mutate the library version; EDP-Command remains `0.1.0`.

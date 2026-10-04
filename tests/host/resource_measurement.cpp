@@ -59,6 +59,16 @@ struct Executor final {
     }
 };
 
+struct MeasurementMutex final {
+    [[nodiscard]] ESPressio::Threading::OrdinaryMutexAcquireResult Acquire() noexcept {
+        return ESPressio::Threading::OrdinaryMutexAcquireResult::Acquired;
+    }
+
+    [[nodiscard]] ESPressio::Threading::OrdinaryMutexReleaseResult Release() noexcept {
+        return ESPressio::Threading::OrdinaryMutexReleaseResult::Released;
+    }
+};
+
 template<std::size_t TCapacity>
 struct MeasurementWaitProvider final {
     static constexpr std::size_t Capacity = TCapacity;
@@ -84,20 +94,25 @@ struct MeasurementWaitProvider final {
     [[nodiscard]] bool Wake(std::size_t slot) noexcept { return slot < Capacity; }
 };
 
-template<std::size_t Invocations, std::size_t Queue, std::size_t Concurrency>
+template<
+    std::size_t Invocations,
+    std::size_t Queue,
+    std::size_t Concurrency,
+    std::size_t RemoteHandoffs
+>
 void Measure(const char* name) {
-    using Plan = C::ResourcePlan<Invocations, Queue, Concurrency>;
+    using Plan = C::ResourcePlan<Invocations, Queue, Concurrency, RemoteHandoffs>;
     using WaitProvider = MeasurementWaitProvider<Invocations>;
-    using Runtime = C::Runtime<Command, Executor, WaitProvider, Plan>;
-    std::printf("EDP_COMMAND_RESOURCE plan=%s invocations=%zu queue=%zu concurrency=%zu runtime=%zu request=%zu response=%zu\n", name, Invocations, Queue, Concurrency, sizeof(Runtime), sizeof(Request), sizeof(Response));
+    using Runtime = C::Runtime<Command, Executor, WaitProvider, MeasurementMutex, Plan>;
+    std::printf("EDP_COMMAND_RESOURCE plan=%s invocations=%zu queue=%zu concurrency=%zu remote_handoffs=%zu runtime=%zu request=%zu response=%zu\n", name, Invocations, Queue, Concurrency, RemoteHandoffs, sizeof(Runtime), sizeof(Request), sizeof(Response));
 }
 
 int main() {
     // ResourcePlan requires QueueCapacity + ExecutionConcurrency <= InvocationCapacity.
     // Keep each measured configuration valid while scaling the bounded topology.
-    Measure<2U, 1U, 1U>("minimum");
-    Measure<4U, 3U, 1U>("small");
-    Measure<10U, 8U, 2U>("representative");
-    Measure<20U, 16U, 4U>("high");
+    Measure<2U, 1U, 1U, 0U>("minimum-local");
+    Measure<4U, 3U, 1U, 2U>("small-mesh");
+    Measure<10U, 8U, 2U, 4U>("representative-mesh");
+    Measure<20U, 16U, 4U, 8U>("high-mesh");
     return 0;
 }

@@ -12,7 +12,7 @@ EDP-System owns the universal semantic schema vocabulary consumed by Command:
 
 Every Command operation is serialisable/schema-bearing through `Primitives::PrimitiveType`; every Request/Response satisfies both `System::SchemaType` and `Serialisation::SerialisableType`.
 
-EDP-System also supplies the Composition Framework. `Composition.hpp` defines the Command domain and exclusive per-Command Handler capability; `Bootstrap.hpp` resolves exactly one same-domain Handler provider and exactly one external-domain bounded wait/wake provider from immutable application Architecture.
+EDP-System also supplies Device/runtime identity and the Composition Framework. `Composition.hpp` defines the Command domain and exclusive per-Command Handler capability; `Bootstrap.hpp` resolves exactly one same-domain Handler plus exactly one external bounded wait/wake and one external Command-identity ordinary mutex provider from immutable application Architecture.
 
 ## EDP-Primitives — mandatory family and scope dependency
 
@@ -31,15 +31,15 @@ Command consumes `ObjectLifetime` to construct/move/destroy Request and Response
 
 `CommandTypes.hpp` aliases EDP-Clock `Duration` and `MonotonicTimestamp`. Command does not select or own a clock provider in the implemented Runtime; the dependency supplies canonical cross-domain time Types without creating timing/scheduling ownership.
 
-## EDP-Threading — mandatory external wait/wake dependency
+## EDP-Threading — mandatory external synchronization dependency
 
-Command consumes the EDP-Threading `BoundedWaitWake` capability and its strongly typed `BoundedWaitWakeResult`. Application owns the concrete provider; Command Bootstrap borrows it after Architecture resolution. Provider `Capacity` must be at least `ResourcePlan::InvocationCapacity`, ensuring every bounded invocation record has a corresponding wait/wake slot.
+Command consumes EDP-Threading `BoundedWaitWake` and `OrdinaryMutex<Composition::RuntimeMutexIdentity>`. Application owns both concrete providers; Command Bootstrap borrows them after Architecture resolution. Wait provider `Capacity` must be at least `ResourcePlan::InvocationCapacity`, ensuring every bounded invocation record has a corresponding wait/wake slot.
 
-Command uses this provider for finite non-consuming `WaitFor`/`WaitUntil` and terminal wake publication; it does not create threads or claim Threading scheduler ownership.
+Command uses the mutex only for short state transitions and the wait provider for finite non-consuming waits/terminal wake publication. Handler execution, waits, wakes and remote adapter calls occur outside the mutex. Command does not create threads or claim Threading scheduler ownership.
 
 ## EDP-Platform — demo/concrete-provider dependency, not Command ownership
 
-PlatformIO/Arduino demonstrations use EDP-Platform FreeRTOS synchronization as the concrete provider underlying EDP-Threading `BoundedWaitWakeProvider`. This is an application/demo Composition choice rather than a new Command-domain provider ownership contract.
+PlatformIO/Arduino demonstrations use EDP-Platform FreeRTOS synchronization as the concrete provider underlying EDP-Threading `BoundedWaitWakeProvider` and `OrdinaryMutexProvider`. This is an application/demo Composition choice rather than Command owning native Platform synchronization.
 
 ## EDP-Serialisation — mandatory semantic qualification dependency
 
@@ -47,7 +47,7 @@ Command directly consumes the public `SerialisableType` predicate for Request/Re
 
 ## Deliberate non-dependencies
 
-Transport and Security remain intentionally absent. Inbound adapters retain remote correlation and use `InboundAdmission`; outbound integrations receive invocation-specific completion capability. `DispatchScoped` coordinates caller-selected operations without defining Transport/provider/destination Types or a routing registry.
+Transport and Security remain intentionally absent. Command owns the strong semantic `CommandInvocationCorrelation`, but adapters construct it and retain delivery/wire correlation plus routing state. `DispatchScoped`, reservations and `RemoteCommandOperation` expose family semantics without defining Transport/provider/destination Types or a routing registry.
 
 ## Test/demo dependencies
 

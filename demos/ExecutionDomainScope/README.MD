@@ -2,7 +2,7 @@
 
 This demo exercises the locked F4 per-call Command execution-domain policy without introducing a concrete Transport or routing implementation.
 
-The local and remote operations are deliberately small stand-ins for an ordinary local Runtime Dispatch and a higher routing/integration operation. The `LocalAndRemote` example returns a negative local result and a successful remote result while proving that both operations were attempted exactly once. This demonstrates the required independence: local failure does not suppress valid remote participation, and no aggregate success/rollback/fallback contract is created.
+The local and remote operations are deliberately small stand-ins for an ordinary local Runtime Dispatch and a higher routing/integration operation. The `LocalAndRemote` example returns a negative local result and a successful remote result while proving that local admission is attempted first and both operations run exactly once. Local failure does not suppress valid remote participation, and no aggregate success/rollback/fallback or Handler-completion ordering contract is created.
 
 Maintained forms:
 

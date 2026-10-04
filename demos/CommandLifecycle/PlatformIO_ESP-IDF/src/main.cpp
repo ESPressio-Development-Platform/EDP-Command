@@ -77,19 +77,30 @@ struct DoubleHandler final : Composition::Provider<
     }
 };
 
+struct FakeRemoteOperation final {
+    [[nodiscard]] std::int32_t operator()(const Request& request) noexcept {
+        return request.Value;
+    }
+};
+
 using WaitProvider = Threading::BoundedWaitWakeProvider<
     ESPressio::Platform::FreeRTOS::Synchronization::SignalProvider,
     4U
 >;
+using CommandMutex = Threading::OrdinaryMutexProvider<
+    Command::Composition::RuntimeMutexIdentity,
+    ESPressio::Platform::FreeRTOS::Synchronization::MutexProvider
+>;
 using CommandComposition = Composition::Composition<Command::Composition::Domain, DoubleHandler>;
-using ThreadingComposition = Composition::Composition<Threading::Domain, WaitProvider>;
+using ThreadingComposition = Composition::Composition<Threading::Domain, WaitProvider, CommandMutex>;
 using Architecture = Composition::Architecture<CommandComposition, ThreadingComposition>;
-using Bootstrap = Command::Bootstrap<DoubleCommand, Architecture, Command::ResourcePlan<4U, 3U, 1U>>;
+using Bootstrap = Command::Bootstrap<DoubleCommand, Architecture, Command::ResourcePlan<4U, 3U, 1U, 1U>>;
 
 extern "C" void app_main() {
     DoubleHandler handler;
     WaitProvider waits;
-    Bootstrap commandRuntime(handler, waits);
+    CommandMutex mutex;
+    Bootstrap commandRuntime(handler, waits, mutex);
 
     if (commandRuntime.Initialize() != Command::InitializationResult::Initialized) {
         return;
@@ -113,5 +124,21 @@ extern "C" void app_main() {
 
     std::printf("response=%d\n", static_cast<int>(response.Take().Value));
     handle.Release();
+
+    Request remoteRequest{7};
+    Command::OutboundHandoff<DoubleCommand, Bootstrap::RuntimeType> outbound(runtime);
+    auto prepared = outbound.Prepare(remoteRequest);
+    if (!prepared.Accepted()) {
+        return;
+    }
+    auto stage = ESPressio::Memory::OwnershipTransfer::Move(prepared).TakeReservation();
+    FakeRemoteOperation remote;
+    const auto remoteValue = Command::DispatchScoped(
+        Command::RemoteOnly{},
+        ESPressio::Memory::OwnershipTransfer::Move(stage),
+        remote
+    );
+    std::printf("remote_handoff=%d\n", static_cast<int>(remoteValue));
+
     static_cast<void>(runtime.BeginQuiesce());
 }

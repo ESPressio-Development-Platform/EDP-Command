@@ -39,7 +39,7 @@ def compile_command(source, output):
     cmd.append(str(source))
     for include_path in include_paths:
         cmd.extend(["-I", str(include_path)])
-    cmd.extend(["-o", str(output)])
+    cmd.extend(["-pthread", "-o", str(output)])
     return cmd
 
 
@@ -69,8 +69,11 @@ def require_compile_failure(source_name, label):
 compile_and_run("command_runtime.cpp", "command-runtime")
 print("PASS: host lifecycle contract")
 
+compile_and_run("concurrency.cpp", "command-concurrency")
+print("PASS: synchronized concurrent execution and cancellation contract")
+
 compile_and_run("execution_scope.cpp", "command-execution-scope")
-print("PASS: F4 execution-domain scope contract")
+print("PASS: execution-domain local-first and remote-operation contract")
 
 print("Compile-time invalid-plan contracts are enforced by ResourcePlan static_asserts.")
 
@@ -78,6 +81,7 @@ require_compile_failure("invalid_missing_handler.cpp", "missing handler rejected
 require_compile_failure("invalid_duplicate_handler.cpp", "duplicate handler rejected at compile time")
 require_compile_failure("invalid_scope_void_operation.cpp", "void scoped operation rejected at compile time")
 require_compile_failure("invalid_scope_throwing_operation.cpp", "throwing scoped operation rejected at compile time")
+require_compile_failure("invalid_scope_throwing_result_move.cpp", "throwing scoped result move rejected at compile time")
 require_compile_failure("invalid_command_missing_schema.cpp", "anonymous Command rejected at compile time")
 require_compile_failure("invalid_request_missing_schema.cpp", "non-schema Request rejected at compile time")
 require_compile_failure("invalid_request_non_serialisable.cpp", "non-serialisable Request rejected at compile time")

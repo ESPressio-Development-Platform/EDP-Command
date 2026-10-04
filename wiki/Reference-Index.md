@@ -18,27 +18,27 @@ This is the exhaustive production-source reference index for the current `src` s
 
 ## `src/command/Composition.hpp`
 
-**PUBLIC COMPOSITION API.** Defines Command `Composition::Domain`; exclusive `Handler<TCommand>` capability; same-domain exactly-one `HandlerRequirement<TCommand>`; `HandlerProvider<TCommand,TComposition>` selection alias; external-domain exactly-one `WaitProviderRequirement` over EDP-Threading `BoundedWaitWake`; and `WaitProvider<TComposition>` selection alias.
+**PUBLIC COMPOSITION API.** Defines Command `Composition::Domain`; exclusive `Handler<TCommand>` capability; same-domain exactly-one `HandlerRequirement<TCommand>`; `HandlerProvider<TCommand,TComposition>` selection alias; external-domain exactly-one `WaitProviderRequirement`/selection over EDP-Threading `BoundedWaitWake`; and `RuntimeMutexIdentity`, external exactly-one `RuntimeMutexRequirement`, and `RuntimeMutexProvider<TComposition>` over EDP-Threading ordinary mutex.
 
 ## `src/command/ResourcePlan.hpp`
 
-**PUBLIC API.** `ResourcePlan<TInvocationCapacity,TQueueCapacity,TExecutionConcurrency>` documents each template capacity through its named constants, enforces positive invocation/execution and `Queue + Execution <= Invocation`, and exposes `InvocationBytes<TRecord>`, `QueueBytes<TQueueIndex>`, `TotalCoreBytes<TRecord,TQueueIndex>`. Template parameters determine Runtime layout/capacity rather than dynamic configuration.
+**PUBLIC API.** `ResourcePlan<TInvocationCapacity,TQueueCapacity,TExecutionConcurrency,TRemoteHandoffCapacity = 0>` documents each template capacity through named constants, enforces positive invocation/execution and `Queue + Execution <= Invocation`, and exposes invocation, queue, remote-handoff and core storage calculators. Template parameters determine Runtime layout/capacity rather than dynamic configuration.
 
 ## `src/command/Handle.hpp`
 
-**PUBLIC API with implementation-facing helpers.** Forward-declares `DispatchResult`; defines `TakeResponseResult<TResponse>` including status, embedded storage/live-state, deleted copy, move/destruction, `Status`, `HasValue`, `Storage`, `MarkLive`, `Take`; `Handle<TCommand,TRuntime>` including private runtime/index/generation identity, private successful-dispatch constructor, move-only RAII, `IsValid`, `State`, `WaitFor`, `WaitUntil`, `RequestCancellation`, constrained `TakeResponse`, `Release`; and `DispatchResult<TCommand,TRuntime>` including accepted/failure/Handle state, failure/success constructors, move-only outcome, `Accepted`, `Failure`, `TakeHandle`.
+**PUBLIC API with implementation-facing helpers.** Defines `TakeResponseResult<TResponse>`; exclusive `Handle<TCommand,TRuntime>`; `DispatchResult<TCommand,TRuntime>`; constructed-but-unpublished `InboundReservation`/`InboundReservationResult`; and synchronized borrowed-Request `RemoteHandoffReservation`/`RemoteHandoffReservationResult`. All retained capabilities are move-only and use private Runtime slot/generation identity.
 
 ## `src/command/Runtime.hpp`
 
-**PUBLIC API plus PRIVATE IMPLEMENTATION.** Defines `Runtime<TCommand,THandlerProvider,TWaitProvider,TPlan>` constrained by `CommandType`. Public aliases: `Command`, `RequestType`, `ResponseType`, `Plan`. Public operations: constructor, deleted copy operations, `Initialize`, `State`, `BeginQuiesce`, `Dispatch`, `ExecuteOne`, `Observe`, `WaitFor`, `WaitUntil`, `RequestCancellation`, constrained `TakeResponse`, `Release`. Private implementation/resource details are documented in [Private Implementation](Private-Implementation) and [Resources Lifecycle and Concurrency](Resources-Lifecycle-and-Concurrency).
+**PUBLIC API plus PRIVATE IMPLEMENTATION.** Defines `Runtime<TCommand,THandlerProvider,TWaitProvider,TMutexProvider,TPlan>` constrained by `CommandType`. Public operations cover lifecycle, dispatch, unpublished ingress reserve/commit/abort, synchronized outbound handoff reserve/commit/abort, claim/execute/complete, Handle observation/wait/cancellation/response/release. Private implementation/resource details are documented in [Private Implementation](Private-Implementation) and [Resources Lifecycle and Concurrency](Resources-Lifecycle-and-Concurrency).
 
 ## `src/command/Bootstrap.hpp`
 
-**PUBLIC COMPOSITION/WIRING API.** Defines `Bootstrap<TCommand,TArchitecture,TPlan>`, resolves unique Handler and external bounded wait/wake providers, validates Architecture and wait capacity at compile time, owns stable Runtime wiring, exposes typed `Initialize`, and provides access to Runtime and bound providers.
+**PUBLIC COMPOSITION/WIRING API.** Defines `Bootstrap<TCommand,TArchitecture,TPlan>`, resolves unique Handler plus external bounded wait/wake and Command ordinary-mutex providers, validates Architecture/wait capacity, owns stable Runtime wiring, exposes typed `Initialize`, and provides access to Runtime and bound providers.
 
 ## `src/command/Integration.hpp`
 
-**PUBLIC INTEGRATION API.** Defines `InboundAdmission<TCommand,TRuntime>`; move-capable `LocalAndRemoteDispatchResult<TLocalResult,TRemoteResult>`; `DispatchScoped` overloads for `LocalOnly`, `RemoteOnly` and `LocalAndRemote`; `OutboundCompletion<TResponse>` and `OutboundCompletion<void>` completion capabilities; and `OutboundInvocation<TCommand,TCompletion>`. See [Public API](Public-API) and [Dependency Contracts](Dependency-Contracts).
+**PUBLIC INTEGRATION API.** Defines `InboundAdmission<TCommand,TRuntime>` and `OutboundHandoff<TCommand,TRuntime>`; move-capable `LocalAndRemoteDispatchResult`; generic and staged `DispatchScoped` overloads; strong `CommandInvocationCorrelation<TDeliveryIdentifier>`; move-only `RemoteCommandOperation<TCommand,TBinding>`; `OutboundCompletion<TResponse>`/`void`; and `OutboundInvocation<TCommand,TCompletion>`. See [Public API](Public-API) and [Dependency Contracts](Dependency-Contracts).
 
 ## Reference coverage validation
 

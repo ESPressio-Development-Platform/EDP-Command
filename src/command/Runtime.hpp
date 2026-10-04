@@ -1,156 +1,244 @@
 #pragma once
 
 #include <array>
+#include <atomic>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
+#include <limits>
 #include <type_traits>
+#include <utility>
 
 #include <ESPressio_Memory.hpp>
 #include <ESPressio_Threading.hpp>
 
 #include "CommandTypes.hpp"
+#include "Handle.hpp"
 #include "ResourcePlan.hpp"
 
 namespace ESPressio::Command {
 
-    /// Forward declaration of the exclusive invocation Handle.
-    /// @tparam TCommand Command declaration represented by the Handle.
-    /// @tparam TRuntime Runtime type owning the invocation.
-    template<class TCommand, class TRuntime>
-    class Handle;
-
-    /// Forward declaration of the typed dispatch result.
-    /// @tparam TCommand Command declaration represented by the dispatch.
-    /// @tparam TRuntime Runtime type owning an admitted invocation.
-    template<class TCommand, class TRuntime>
-    class DispatchResult;
-
-    /// Fixed-storage Runtime for one typed Command and its statically resolved providers.
-    /// @tparam TCommand Command declaration executed by this Runtime.
-    /// @tparam THandlerProvider Application-owned Handler provider for TCommand.
-    /// @tparam TWaitProvider Application-owned bounded wait/wake provider.
-    /// @tparam TPlan Compile-time Command resource plan.
-    template<class TCommand, class THandlerProvider, class TWaitProvider, class TPlan>
+    /// Fixed-storage, externally scheduled Runtime for one typed Command.
+    ///
+    /// Every short mutation is serialized by the application-owned ordinary mutex. Handler execution,
+    /// finite waits, wake publication and external callbacks occur outside that serialization domain.
+    template<
+        class TCommand,
+        class THandlerProvider,
+        class TWaitProvider,
+        class TMutexProvider,
+        class TPlan
+    >
     requires CommandType<TCommand>
     class Runtime final {
     private:
-        // Private Runtime type vocabulary used by storage declarations.
-
-        /// Request type declared by the Command.
         using RequestType = Request<TCommand>;
-
-        /// Response type declared by the Command.
         using ResponseType = Response<TCommand>;
-
-        /// Compile-time ResourcePlan applied to this Runtime.
         using Plan = TPlan;
 
-        // Invocation record storage and lifecycle state.
-
-        /// Fixed storage and observable state for one invocation slot.
         struct Record final {
-            /// Raw storage containing the live Request while RequestLive is true.
             alignas(RequestType) std::byte RequestStorage[sizeof(RequestType)];
 
-            /// Number of bytes reserved for a Response, retaining valid storage for void Responses.
-            static constexpr std::size_t ResponseBytes = std::is_void_v<ResponseType> ? 1U : sizeof(ResponseType);
+            static constexpr std::size_t ResponseBytes =
+                std::is_void_v<ResponseType> ? 1U : sizeof(ResponseType);
+            static constexpr std::size_t ResponseAlignment =
+                std::is_void_v<ResponseType> ? 1U : alignof(ResponseType);
 
-            /// Alignment reserved for a Response, retaining valid alignment for void Responses.
-            static constexpr std::size_t ResponseAlignment = std::is_void_v<ResponseType> ? 1U : alignof(ResponseType);
-
-            /// Raw storage containing the live Response while ResponseLive is true.
             alignas(ResponseAlignment) std::byte ResponseStorage[ResponseBytes];
 
-            /// Current invocation lifecycle state.
-            InvocationState State{InvocationState::Queued};
-
-            /// Semantic terminal outcome, meaningful after terminal transition.
+            InvocationState State{InvocationState::Reserved};
             Outcome TerminalOutcome{Outcome::Succeeded};
-
-            /// Failure detail, meaningful when TerminalOutcome is Failed.
             ExecutionFailure Failure{ExecutionFailure::ExecutorFailure};
-
-            /// Non-zero reuse generation used to reject stale Handles.
             std::uint32_t Generation{0U};
-
-            /// Indicates whether this record currently belongs to an invocation.
+            std::atomic_bool CancellationRequested{false};
             bool Occupied{false};
-
-            /// Indicates whether RequestStorage contains a live Request.
             bool RequestLive{false};
-
-            /// Indicates whether ResponseStorage contains a live Response.
             bool ResponseLive{false};
-
-            /// Indicates whether the retained Response has already been extracted.
             bool ResponseTaken{false};
-
-            /// Cooperative cancellation predicate observed by the Handler.
-            bool CancellationRequested{false};
-
-            /// Indicates whether an exclusive Handle still retains this record.
             bool HandleRetained{false};
+            bool QueuedInRing{false};
+            bool TerminalWakePending{false};
         };
 
-        // Fixed Runtime storage and queue bookkeeping.
+        struct RemoteHandoffRecord final {
+            const RequestType* RequestView{nullptr};
+            std::uint32_t Generation{0U};
+            bool Occupied{false};
+        };
 
-        /// Fixed invocation-record storage defined by the ResourcePlan.
+        struct EmptyRemoteHandoffStorage final {};
+
+        using RemoteHandoffStorage = std::conditional_t<
+            Plan::RemoteHandoffCapacity == 0U,
+            EmptyRemoteHandoffStorage,
+            std::array<RemoteHandoffRecord, Plan::RemoteHandoffCapacity>
+        >;
+
         std::array<Record, Plan::InvocationCapacity> _records{};
-
-        /// Fixed queue of record indices; one inert element keeps a zero-capacity array well formed.
+        [[no_unique_address]] RemoteHandoffStorage _remoteHandoffs{};
         std::array<std::size_t, Plan::QueueCapacity == 0U ? 1U : Plan::QueueCapacity> _queue{};
-
-        /// Current queue head index.
         std::size_t _queueHead{0U};
-
-        /// Current queue tail index.
         std::size_t _queueTail{0U};
-
-        /// Number of queued record indices.
         std::size_t _queueCount{0U};
-
-        /// Number of invocations synchronously executing through this Runtime.
+        std::size_t _reservedQueueCount{0U};
         std::size_t _executing{0U};
+        std::size_t _remoteHandoffCount{0U};
 
-        // Runtime lifecycle and borrowed provider bindings.
-
-        /// Current Runtime lifecycle state.
         RuntimeState _state{RuntimeState::Uninitialized};
-
-        /// Borrowed application-owned Handler provider.
         THandlerProvider* _handler{nullptr};
-
-        /// Borrowed application-owned bounded wait/wake provider.
         TWaitProvider* _waitProvider{nullptr};
+        TMutexProvider* _mutex{nullptr};
 
-        // Invocation identity and lifecycle helpers.
+        static_assert(
+            requires(TMutexProvider& provider) {
+                { provider.Acquire() } noexcept -> std::same_as<Threading::OrdinaryMutexAcquireResult>;
+                { provider.Release() } noexcept -> std::same_as<Threading::OrdinaryMutexReleaseResult>;
+            },
+            "Command Runtime requires an EDP-Threading ordinary mutex provider"
+        );
 
-        /// Returns true when index and generation identify the currently occupied record.
-        [[nodiscard]] bool Matches(std::size_t index, std::uint32_t generation) const noexcept {
+        [[noreturn]] static void InfrastructureFailure() noexcept {
+            std::terminate();
+        }
+
+        void Lock() const noexcept {
+            if (_mutex->Acquire() != Threading::OrdinaryMutexAcquireResult::Acquired) {
+                InfrastructureFailure();
+            }
+        }
+
+        void Unlock() const noexcept {
+            if (_mutex->Release() != Threading::OrdinaryMutexReleaseResult::Released) {
+                InfrastructureFailure();
+            }
+        }
+
+        [[nodiscard]] bool MatchesLocked(
+            std::size_t index,
+            std::uint32_t generation
+        ) const noexcept {
             return index < _records.size()
                 && _records[index].Occupied
                 && _records[index].Generation == generation;
         }
 
-        /// Returns true when the supplied invocation state is terminal.
+        [[nodiscard]] bool MatchesRemoteHandoffLocked(
+            std::size_t index,
+            std::uint32_t generation
+        ) const noexcept {
+            return index < Plan::RemoteHandoffCapacity
+                && RemoteHandoffAt(index).Occupied
+                && RemoteHandoffAt(index).Generation == generation;
+        }
+
+        [[nodiscard]] RemoteHandoffRecord& RemoteHandoffAt(std::size_t index) noexcept {
+            if constexpr (Plan::RemoteHandoffCapacity == 0U) {
+                InfrastructureFailure();
+            } else {
+                return _remoteHandoffs[index];
+            }
+        }
+
+        [[nodiscard]] const RemoteHandoffRecord& RemoteHandoffAt(
+            std::size_t index
+        ) const noexcept {
+            if constexpr (Plan::RemoteHandoffCapacity == 0U) {
+                InfrastructureFailure();
+            } else {
+                return _remoteHandoffs[index];
+            }
+        }
+
         [[nodiscard]] static bool IsTerminal(InvocationState state) noexcept {
             return state == InvocationState::Completed || state == InvocationState::Cancelled;
         }
 
-        /// Publishes terminal wake-up for the record's stable wait slot.
-        void WakeTerminal(std::size_t index) noexcept {
-            static_cast<void>(_waitProvider->Wake(index));
+        [[nodiscard]] std::size_t ActiveCountLocked() const noexcept {
+            std::size_t count = 0U;
+            for (const auto& record : _records) {
+                if (record.Occupied) {
+                    ++count;
+                }
+            }
+            return count + _remoteHandoffCount;
         }
 
-        /// Destroys terminal record payloads and frees the slot once Handle retention has ended.
-        void ReclaimIfPossible(std::size_t index) noexcept {
+        [[nodiscard]] std::size_t ReserveRecordLocked() noexcept {
+            for (std::size_t index = 0U; index < _records.size(); ++index) {
+                auto& record = _records[index];
+                if (
+                    record.Occupied ||
+                    record.Generation == std::numeric_limits<std::uint32_t>::max()
+                ) {
+                    continue;
+                }
+
+                ++record.Generation;
+                record.Occupied = true;
+                record.State = InvocationState::Reserved;
+                record.TerminalOutcome = Outcome::Succeeded;
+                record.Failure = ExecutionFailure::ExecutorFailure;
+                record.CancellationRequested.store(false, std::memory_order_release);
+                record.RequestLive = false;
+                record.ResponseLive = false;
+                record.ResponseTaken = false;
+                record.HandleRetained = false;
+                record.QueuedInRing = false;
+                record.TerminalWakePending = false;
+                return index;
+            }
+
+            return Plan::InvocationCapacity;
+        }
+
+        [[nodiscard]] std::size_t ReserveRemoteHandoffLocked(
+            const RequestType& request
+        ) noexcept {
+            if constexpr (Plan::RemoteHandoffCapacity != 0U) {
+                for (std::size_t index = 0U; index < Plan::RemoteHandoffCapacity; ++index) {
+                    auto& record = RemoteHandoffAt(index);
+                    if (
+                        record.Occupied ||
+                        record.Generation == std::numeric_limits<std::uint32_t>::max()
+                    ) {
+                        continue;
+                    }
+
+                    ++record.Generation;
+                    record.RequestView = &request;
+                    record.Occupied = true;
+                    ++_remoteHandoffCount;
+                    return index;
+                }
+            }
+
+            return Plan::RemoteHandoffCapacity;
+        }
+
+        void ReleaseRemoteHandoffLocked(std::size_t index) noexcept {
+            auto& record = RemoteHandoffAt(index);
+            record.RequestView = nullptr;
+            record.Occupied = false;
+            --_remoteHandoffCount;
+            if (_state == RuntimeState::Quiescing && ActiveCountLocked() == 0U) {
+                _state = RuntimeState::Quiescent;
+            }
+        }
+
+        void ReclaimIfPossibleLocked(std::size_t index) noexcept {
             auto& record = _records[index];
-            if (!IsTerminal(record.State) || record.HandleRetained) {
+            if (
+                !IsTerminal(record.State) ||
+                record.HandleRetained ||
+                record.QueuedInRing ||
+                record.TerminalWakePending
+            ) {
                 return;
             }
 
             if (record.RequestLive) {
-                ESPressio::Memory::ObjectLifetime::Destroy(
+                Memory::ObjectLifetime::Destroy(
                     *reinterpret_cast<RequestType*>(record.RequestStorage)
                 );
                 record.RequestLive = false;
@@ -158,7 +246,7 @@ namespace ESPressio::Command {
 
             if constexpr (!std::is_void_v<ResponseType>) {
                 if (record.ResponseLive) {
-                    ESPressio::Memory::ObjectLifetime::Destroy(
+                    Memory::ObjectLifetime::Destroy(
                         *reinterpret_cast<ResponseType*>(record.ResponseStorage)
                     );
                     record.ResponseLive = false;
@@ -166,147 +254,356 @@ namespace ESPressio::Command {
             }
 
             record.Occupied = false;
-            if (_state == RuntimeState::Quiescing && ActiveCount() == 0U) {
+            if (_state == RuntimeState::Quiescing && ActiveCountLocked() == 0U) {
                 _state = RuntimeState::Quiescent;
             }
         }
 
-        /// Counts currently occupied invocation records, including terminal records retained by Handles.
-        [[nodiscard]] std::size_t ActiveCount() const noexcept {
-            std::size_t count = 0U;
-            for (const auto& record : _records) {
-                if (record.Occupied) {
-                    ++count;
-                }
+        void AbortIngressLocked(std::size_t index) noexcept {
+            auto& record = _records[index];
+            if (record.RequestLive) {
+                Memory::ObjectLifetime::Destroy(
+                    *reinterpret_cast<RequestType*>(record.RequestStorage)
+                );
+                record.RequestLive = false;
             }
-            return count;
+
+            record.Occupied = false;
+            --_reservedQueueCount;
+            if (_state == RuntimeState::Quiescing && ActiveCountLocked() == 0U) {
+                _state = RuntimeState::Quiescent;
+            }
         }
 
-        /// Performs a finite provider wait while preserving authoritative terminal-state precedence.
-        /// @tparam TWaitOperation Callable implementing the concrete finite provider wait.
+        void WakeTerminal(std::size_t index) noexcept {
+            static_cast<void>(_waitProvider->Wake(index));
+        }
+
+        void CompleteTerminalWake(
+            std::size_t index,
+            std::uint32_t generation
+        ) noexcept {
+            Lock();
+            if (!MatchesLocked(index, generation)) {
+                InfrastructureFailure();
+            }
+            _records[index].TerminalWakePending = false;
+            ReclaimIfPossibleLocked(index);
+            Unlock();
+        }
+
         template<class TWaitOperation>
         [[nodiscard]] WaitResult Wait(
             std::size_t index,
             std::uint32_t generation,
             TWaitOperation operation
         ) noexcept {
-            if (!Matches(index, generation)) {
+            Lock();
+            if (!MatchesLocked(index, generation)) {
+                Unlock();
                 return WaitResult::InvalidHandle;
             }
             if (IsTerminal(_records[index].State)) {
+                Unlock();
                 return WaitResult::Terminal;
             }
+            Unlock();
 
             const auto waitResult = operation(index);
-            if (!Matches(index, generation)) {
+
+            Lock();
+            if (!MatchesLocked(index, generation)) {
+                Unlock();
                 return WaitResult::InvalidHandle;
             }
             if (IsTerminal(_records[index].State)) {
+                Unlock();
                 return WaitResult::Terminal;
             }
-            if (waitResult == ESPressio::Threading::BoundedWaitWakeResult::TimedOut) {
-                return WaitResult::TimedOut;
-            }
-            return WaitResult::Interrupted;
+            Unlock();
+
+            return waitResult == Threading::BoundedWaitWakeResult::TimedOut
+                ? WaitResult::TimedOut
+                : WaitResult::Interrupted;
         }
 
     public:
-        // Public Runtime type vocabulary.
-
-        /// Command declaration executed by this Runtime.
         using Command = TCommand;
+        using RequestValue = RequestType;
+        using ResponseValue = ResponseType;
+        using ResourcePlanType = Plan;
 
-        // Construction and lifecycle.
-
-        /// Constructs Runtime wiring by borrowing the resolved application providers.
-        Runtime(THandlerProvider& handler, TWaitProvider& waitProvider) noexcept :
+        Runtime(
+            THandlerProvider& handler,
+            TWaitProvider& waitProvider,
+            TMutexProvider& mutex
+        ) noexcept :
             _handler(&handler),
-            _waitProvider(&waitProvider) {
+            _waitProvider(&waitProvider),
+            _mutex(&mutex) {
         }
 
         Runtime(const Runtime&) = delete;
         Runtime& operator=(const Runtime&) = delete;
+        Runtime(Runtime&&) = delete;
+        Runtime& operator=(Runtime&&) = delete;
 
-        /// Initializes an uninitialized Runtime and opens Command admission.
         [[nodiscard]] InitializationResult Initialize() noexcept {
+            Lock();
             if (_state != RuntimeState::Uninitialized) {
+                Unlock();
                 return InitializationResult::AlreadyInitialized;
             }
-
             _state = RuntimeState::Running;
+            Unlock();
             return InitializationResult::Initialized;
         }
 
-        /// Returns the current Runtime lifecycle state.
         [[nodiscard]] RuntimeState State() const noexcept {
-            return _state;
+            Lock();
+            const auto state = _state;
+            Unlock();
+            return state;
         }
 
-        /// Closes admission and begins deterministic Runtime quiescence.
         [[nodiscard]] QuiesceResult BeginQuiesce() noexcept {
+            Lock();
             if (_state != RuntimeState::Running) {
+                Unlock();
                 return QuiesceResult::NotRunning;
             }
 
-            _state = ActiveCount() == 0U
+            _state = ActiveCountLocked() == 0U
                 ? RuntimeState::Quiescent
                 : RuntimeState::Quiescing;
+            Unlock();
             return QuiesceResult::Started;
         }
 
-        // Admission and execution.
-
-        /// Attempts to transactionally admit one Request into bounded Runtime storage.
         [[nodiscard]] DispatchResult<TCommand, Runtime> Dispatch(RequestType request) noexcept {
+            Lock();
             if (_state != RuntimeState::Running) {
+                Unlock();
                 return DispatchResult<TCommand, Runtime>(DispatchFailure::RuntimeUnavailable);
             }
-            if (_queueCount >= Plan::QueueCapacity) {
+            if (_queueCount + _reservedQueueCount >= Plan::QueueCapacity) {
+                Unlock();
                 return DispatchResult<TCommand, Runtime>(DispatchFailure::NoCapacity);
             }
 
-            std::size_t index = Plan::InvocationCapacity;
-            for (std::size_t candidate = 0U; candidate < _records.size(); ++candidate) {
-                if (!_records[candidate].Occupied) {
-                    index = candidate;
-                    break;
-                }
-            }
+            const auto index = ReserveRecordLocked();
             if (index == Plan::InvocationCapacity) {
+                Unlock();
                 return DispatchResult<TCommand, Runtime>(DispatchFailure::NoCapacity);
             }
 
             auto& record = _records[index];
-            ++record.Generation;
-            if (record.Generation == 0U) {
-                ++record.Generation;
-            }
-            record.Occupied = true;
-            record.State = InvocationState::Queued;
-            record.CancellationRequested = false;
-            record.ResponseTaken = false;
-            record.ResponseLive = false;
-            record.HandleRetained = true;
             static_cast<void>(
-                ESPressio::Memory::ObjectLifetime::MoveConstruct<RequestType>(
+                Memory::ObjectLifetime::MoveConstruct<RequestType>(
                     record.RequestStorage,
                     request
                 )
             );
             record.RequestLive = true;
+            record.State = InvocationState::Queued;
+            record.HandleRetained = true;
+            record.QueuedInRing = true;
             _queue[_queueTail] = index;
             _queueTail = (_queueTail + 1U) % _queue.size();
             ++_queueCount;
-            return DispatchResult<TCommand, Runtime>(
+            const auto generation = record.Generation;
+            Unlock();
+
+            return DispatchResult<TCommand, Runtime>(*this, index, generation);
+        }
+
+        [[nodiscard]] InboundReservationResult<TCommand, Runtime> PrepareIngress() noexcept
+        requires std::is_nothrow_default_constructible_v<RequestType> {
+            Lock();
+            if (_state != RuntimeState::Running) {
+                Unlock();
+                return InboundReservationResult<TCommand, Runtime>(
+                    DispatchFailure::RuntimeUnavailable
+                );
+            }
+            if (_queueCount + _reservedQueueCount >= Plan::QueueCapacity) {
+                Unlock();
+                return InboundReservationResult<TCommand, Runtime>(DispatchFailure::NoCapacity);
+            }
+
+            const auto index = ReserveRecordLocked();
+            if (index == Plan::InvocationCapacity) {
+                Unlock();
+                return InboundReservationResult<TCommand, Runtime>(DispatchFailure::NoCapacity);
+            }
+
+            auto& record = _records[index];
+            static_cast<void>(
+                Memory::ObjectLifetime::Construct<RequestType>(record.RequestStorage)
+            );
+            record.RequestLive = true;
+            ++_reservedQueueCount;
+            const auto generation = record.Generation;
+            Unlock();
+
+            return InboundReservationResult<TCommand, Runtime>(
                 *this,
                 index,
-                record.Generation
+                generation
             );
         }
 
-        /// Attempts to synchronously execute at most one queued invocation.
+        [[nodiscard]] RequestType& IngressRequest(
+            std::size_t index,
+            std::uint32_t generation
+        ) noexcept {
+            if (
+                index >= _records.size() ||
+                !_records[index].Occupied ||
+                _records[index].Generation != generation ||
+                _records[index].State != InvocationState::Reserved ||
+                !_records[index].RequestLive
+            ) {
+                InfrastructureFailure();
+            }
+
+            return *reinterpret_cast<RequestType*>(_records[index].RequestStorage);
+        }
+
+        [[nodiscard]] DispatchResult<TCommand, Runtime> CommitIngress(
+            std::size_t index,
+            std::uint32_t generation
+        ) noexcept {
+            Lock();
+            if (
+                !MatchesLocked(index, generation) ||
+                _records[index].State != InvocationState::Reserved
+            ) {
+                Unlock();
+                return DispatchResult<TCommand, Runtime>(DispatchFailure::BindingUnavailable);
+            }
+
+            if (_state != RuntimeState::Running) {
+                AbortIngressLocked(index);
+                Unlock();
+                return DispatchResult<TCommand, Runtime>(DispatchFailure::RuntimeUnavailable);
+            }
+
+            auto& record = _records[index];
+            --_reservedQueueCount;
+            record.State = InvocationState::Queued;
+            record.HandleRetained = true;
+            record.QueuedInRing = true;
+            _queue[_queueTail] = index;
+            _queueTail = (_queueTail + 1U) % _queue.size();
+            ++_queueCount;
+            Unlock();
+
+            return DispatchResult<TCommand, Runtime>(*this, index, generation);
+        }
+
+        void AbortIngress(
+            std::size_t index,
+            std::uint32_t generation
+        ) noexcept {
+            Lock();
+            if (
+                MatchesLocked(index, generation) &&
+                _records[index].State == InvocationState::Reserved
+            ) {
+                AbortIngressLocked(index);
+            }
+            Unlock();
+        }
+
+        /// Reserves one bounded synchronized stage for a caller-owned outbound Request borrow.
+        [[nodiscard]] RemoteHandoffReservationResult<TCommand, Runtime> PrepareRemoteHandoff(
+            const RequestType& request
+        ) noexcept {
+            Lock();
+            if (_state != RuntimeState::Running) {
+                Unlock();
+                return RemoteHandoffReservationResult<TCommand, Runtime>(
+                    DispatchFailure::RuntimeUnavailable
+                );
+            }
+
+            const auto index = ReserveRemoteHandoffLocked(request);
+            if (index == Plan::RemoteHandoffCapacity) {
+                Unlock();
+                return RemoteHandoffReservationResult<TCommand, Runtime>(
+                    DispatchFailure::NoCapacity
+                );
+            }
+
+            const auto generation = RemoteHandoffAt(index).Generation;
+            Unlock();
+            return RemoteHandoffReservationResult<TCommand, Runtime>(
+                *this,
+                index,
+                generation
+            );
+        }
+
+        RemoteHandoffReservationResult<TCommand, Runtime> PrepareRemoteHandoff(
+            RequestType&&
+        ) noexcept = delete;
+
+        /// Calls the selected bounded remote adapter outside Command synchronization and releases the stage.
+        template<class TRemoteOperation>
+        [[nodiscard]] auto CommitRemoteHandoff(
+            std::size_t index,
+            std::uint32_t generation,
+            TRemoteOperation& remoteOperation
+        ) noexcept {
+            using RemoteResult = decltype(
+                remoteOperation(std::declval<const RequestType&>())
+            );
+            static_assert(
+                noexcept(remoteOperation(std::declval<const RequestType&>())),
+                "Command remote handoff must be non-throwing"
+            );
+            static_assert(
+                !std::is_void_v<RemoteResult> &&
+                std::is_nothrow_move_constructible_v<RemoteResult> &&
+                std::is_nothrow_destructible_v<RemoteResult>,
+                "Command remote handoff requires a non-throwing move-only-capable result"
+            );
+
+            Lock();
+            if (!MatchesRemoteHandoffLocked(index, generation)) {
+                InfrastructureFailure();
+            }
+            const auto* request = RemoteHandoffAt(index).RequestView;
+            Unlock();
+
+            auto result = remoteOperation(*request);
+
+            Lock();
+            if (!MatchesRemoteHandoffLocked(index, generation)) {
+                InfrastructureFailure();
+            }
+            ReleaseRemoteHandoffLocked(index);
+            Unlock();
+            return result;
+        }
+
+        /// Releases one valid outbound stage without invoking its adapter.
+        void AbortRemoteHandoff(
+            std::size_t index,
+            std::uint32_t generation
+        ) noexcept {
+            Lock();
+            if (MatchesRemoteHandoffLocked(index, generation)) {
+                ReleaseRemoteHandoffLocked(index);
+            }
+            Unlock();
+        }
+
         [[nodiscard]] ExecutionAttemptResult ExecuteOne() noexcept {
+            Lock();
             if (_queueCount == 0U || _executing >= Plan::ExecutionConcurrency) {
+                Unlock();
                 return ExecutionAttemptResult::NotExecuted;
             }
 
@@ -314,64 +611,71 @@ namespace ESPressio::Command {
             _queueHead = (_queueHead + 1U) % _queue.size();
             --_queueCount;
             auto& record = _records[index];
-            if (!record.Occupied || record.State != InvocationState::Queued) {
-                return ExecutionAttemptResult::NotExecuted;
-            }
+            record.QueuedInRing = false;
 
-            if (record.CancellationRequested) {
-                record.State = InvocationState::Cancelled;
-                record.TerminalOutcome = Outcome::Cancelled;
-                WakeTerminal(index);
-                ReclaimIfPossible(index);
-                return ExecutionAttemptResult::Executed;
+            if (!record.Occupied || record.State != InvocationState::Queued) {
+                ReclaimIfPossibleLocked(index);
+                Unlock();
+                return ExecutionAttemptResult::NotExecuted;
             }
 
             record.State = InvocationState::Executing;
             ++_executing;
-            auto& request = *reinterpret_cast<RequestType*>(record.RequestStorage);
+            const auto generation = record.Generation;
+            auto* request = reinterpret_cast<RequestType*>(record.RequestStorage);
             CancellationToken cancellation(record.CancellationRequested);
-            auto result = _handler->Execute(
-                request,
-                cancellation
-            );
+            Unlock();
+
+            auto result = _handler->Execute(*request, cancellation);
+
+            Lock();
+            if (
+                !MatchesLocked(index, generation) ||
+                _records[index].State != InvocationState::Executing ||
+                _executing == 0U
+            ) {
+                InfrastructureFailure();
+            }
             --_executing;
 
-            if (record.CancellationRequested) {
-                record.State = InvocationState::Cancelled;
-                record.TerminalOutcome = Outcome::Cancelled;
+            auto& completed = _records[index];
+            if (completed.CancellationRequested.load(std::memory_order_acquire)) {
+                completed.State = InvocationState::Cancelled;
+                completed.TerminalOutcome = Outcome::Cancelled;
             } else {
-                record.TerminalOutcome = result.GetOutcome();
-                record.Failure = result.Failure();
+                completed.TerminalOutcome = result.GetOutcome();
+                completed.Failure = result.Failure();
                 if constexpr (!std::is_void_v<ResponseType>) {
                     if (result.GetOutcome() != Outcome::Failed && result.HasResponse()) {
                         auto response = result.TakeResponse();
                         static_cast<void>(
-                            ESPressio::Memory::ObjectLifetime::MoveConstruct<ResponseType>(
-                                record.ResponseStorage,
+                            Memory::ObjectLifetime::MoveConstruct<ResponseType>(
+                                completed.ResponseStorage,
                                 response
                             )
                         );
-                        record.ResponseLive = true;
+                        completed.ResponseLive = true;
                     }
                 }
-                record.State = InvocationState::Completed;
+                completed.State = InvocationState::Completed;
             }
+            completed.TerminalWakePending = true;
+            Unlock();
 
             WakeTerminal(index);
-            ReclaimIfPossible(index);
+            CompleteTerminalWake(index, generation);
             return ExecutionAttemptResult::Executed;
         }
 
-        // Invocation observation and finite waiting.
-
-        /// Returns an observable value snapshot for a matching invocation identity.
         [[nodiscard]] InvocationObservation Observe(
             std::size_t index,
             std::uint32_t generation,
             bool& valid
         ) const noexcept {
-            valid = Matches(index, generation);
+            Lock();
+            valid = MatchesLocked(index, generation);
             if (!valid) {
+                Unlock();
                 return {};
             }
 
@@ -384,10 +688,10 @@ namespace ESPressio::Command {
                 observation.HasFailure = record.TerminalOutcome == Outcome::Failed;
                 observation.Failure = record.Failure;
             }
+            Unlock();
             return observation;
         }
 
-        /// Performs a finite wait for the supplied duration.
         [[nodiscard]] WaitResult WaitFor(
             std::size_t index,
             std::uint32_t generation,
@@ -397,15 +701,11 @@ namespace ESPressio::Command {
                 index,
                 generation,
                 [&](std::size_t slot) noexcept {
-                    return _waitProvider->WaitFor(
-                        slot,
-                        duration
-                    );
+                    return _waitProvider->WaitFor(slot, duration);
                 }
             );
         }
 
-        /// Performs a finite wait until the supplied monotonic deadline.
         [[nodiscard]] WaitResult WaitUntil(
             std::size_t index,
             std::uint32_t generation,
@@ -415,44 +715,48 @@ namespace ESPressio::Command {
                 index,
                 generation,
                 [&](std::size_t slot) noexcept {
-                    return _waitProvider->WaitUntil(
-                        slot,
-                        deadline
-                    );
+                    return _waitProvider->WaitUntil(slot, deadline);
                 }
             );
         }
 
-        // Cancellation and response ownership.
-
-        /// Requests cooperative cancellation for a matching invocation identity.
         [[nodiscard]] CancellationRequestResult RequestCancellation(
             std::size_t index,
             std::uint32_t generation
         ) noexcept {
-            if (!Matches(index, generation)) {
+            bool publishWake = false;
+
+            Lock();
+            if (!MatchesLocked(index, generation)) {
+                Unlock();
                 return CancellationRequestResult::InvalidHandle;
             }
 
             auto& record = _records[index];
             if (IsTerminal(record.State)) {
+                Unlock();
                 return CancellationRequestResult::TooLate;
             }
-            if (record.CancellationRequested) {
+            if (record.CancellationRequested.exchange(true, std::memory_order_acq_rel)) {
+                Unlock();
                 return CancellationRequestResult::AlreadyRequested;
             }
 
-            record.CancellationRequested = true;
             if (record.State == InvocationState::Queued) {
                 record.State = InvocationState::Cancelled;
                 record.TerminalOutcome = Outcome::Cancelled;
+                record.TerminalWakePending = true;
+                publishWake = true;
+            }
+            Unlock();
+
+            if (publishWake) {
                 WakeTerminal(index);
+                CompleteTerminalWake(index, generation);
             }
             return CancellationRequestResult::Requested;
         }
 
-        /// Transfers a retained non-void Response into caller-provided raw storage.
-        /// @tparam TResponseValue Response type selected for extraction.
         template<class TResponseValue = ResponseType>
         requires (!std::is_void_v<TResponseValue>)
         [[nodiscard]] TakeResponseStatus TakeResponse(
@@ -460,44 +764,44 @@ namespace ESPressio::Command {
             std::uint32_t generation,
             void* destination
         ) noexcept {
-            if (!Matches(index, generation)) {
+            Lock();
+            if (!MatchesLocked(index, generation)) {
+                Unlock();
                 return TakeResponseStatus::InvalidHandle;
             }
 
             auto& record = _records[index];
             if (!IsTerminal(record.State)) {
+                Unlock();
                 return TakeResponseStatus::NotTerminal;
             }
             if (!record.ResponseLive) {
+                Unlock();
                 return TakeResponseStatus::NoResponse;
             }
             if (record.ResponseTaken) {
+                Unlock();
                 return TakeResponseStatus::AlreadyTaken;
             }
 
             auto& response = *reinterpret_cast<TResponseValue*>(record.ResponseStorage);
             static_cast<void>(
-                ESPressio::Memory::ObjectLifetime::MoveConstruct<TResponseValue>(
-                    destination,
-                    response
-                )
+                Memory::ObjectLifetime::MoveConstruct<TResponseValue>(destination, response)
             );
-            ESPressio::Memory::ObjectLifetime::Destroy(response);
+            Memory::ObjectLifetime::Destroy(response);
             record.ResponseLive = false;
             record.ResponseTaken = true;
+            Unlock();
             return TakeResponseStatus::Taken;
         }
 
-        // Handle retention.
-
-        /// Releases Handle retention for a matching invocation and reclaims it when terminal.
         void Release(std::size_t index, std::uint32_t generation) noexcept {
-            if (!Matches(index, generation)) {
-                return;
+            Lock();
+            if (MatchesLocked(index, generation)) {
+                _records[index].HandleRetained = false;
+                ReclaimIfPossibleLocked(index);
             }
-
-            _records[index].HandleRetained = false;
-            ReclaimIfPossible(index);
+            Unlock();
         }
     };
 

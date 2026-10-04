@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -25,7 +26,8 @@ namespace ESPressio::Command {
         Queued = 0U,
         Executing = 1U,
         Completed = 2U,
-        Cancelled = 3U
+        Cancelled = 3U,
+        Reserved = 4U
     };
 
     /// Identifies how a terminal invocation semantically finished.
@@ -242,13 +244,13 @@ namespace ESPressio::Command {
         // Borrowed cancellation state.
 
         /// Points to the Runtime-owned cancellation-request predicate.
-        const bool* _requested{nullptr};
+        const std::atomic_bool* _requested{nullptr};
 
     public:
         // Construction.
 
         /// Borrows the Runtime-owned cancellation-request predicate.
-        explicit CancellationToken(const bool& requested) noexcept :
+        explicit CancellationToken(const std::atomic_bool& requested) noexcept :
             _requested(&requested) {
         }
 
@@ -256,7 +258,7 @@ namespace ESPressio::Command {
 
         /// Returns true when cancellation has been requested.
         [[nodiscard]] bool IsRequested() const noexcept {
-            return _requested != nullptr && *_requested;
+            return _requested != nullptr && _requested->load(std::memory_order_acquire);
         }
     };
 

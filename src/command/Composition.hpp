@@ -67,4 +67,21 @@ namespace ESPressio::Command::Composition {
         ESPressio::System::CompositionFramework::SelectUnique
     >;
 
+    /// Semantic identity separating Command Runtime serialization from unrelated mutexes.
+    struct RuntimeMutexIdentity final {};
+
+    /// Exactly one application-owned ordinary mutex serializes short Command Runtime transitions.
+    using RuntimeMutexRequirement = ESPressio::System::CompositionFramework::Requirement<
+        ESPressio::Threading::OrdinaryMutex<RuntimeMutexIdentity>,
+        ESPressio::System::CompositionFramework::RequirementScope::ExternalDomain,
+        ESPressio::System::CompositionFramework::ExactlyProviders<1U>
+    >;
+
+    /// Resolves the unique external Command Runtime mutex provider from an Architecture.
+    template<class TComposition>
+    using RuntimeMutexProvider = typename TComposition::template Select<
+        RuntimeMutexRequirement,
+        ESPressio::System::CompositionFramework::SelectUnique
+    >;
+
 } // ESPressio::Command::Composition

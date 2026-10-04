@@ -20,7 +20,7 @@ The three compile-time policy Types are:
 
 ## Higher-layer scoped coordination
 
-`DispatchScoped` coordinates operations that have already been selected by the caller or higher integration/routing layer. Command does not decide what the remote operation means or where it sends work.
+`DispatchScoped` coordinates operations already selected by the caller or higher integration/routing layer. Command does not choose destinations or routes. For `LocalAndRemote`, it establishes one deliberate ordering fact: the local admission attempt occurs before the independent remote handoff. It does not wait for local Handler execution.
 
 ```cpp
 auto localOperation = [&]() noexcept {
@@ -40,29 +40,60 @@ auto result = Command::DispatchScoped(
 
 Both operations must be non-throwing and must return an observable, non-`void` result. This keeps failure/outcome semantics in the domain that owns each operation rather than inventing a Command-wide aggregate result.
 
-The coordinator deliberately accepts operations rather than a Request object. That boundary avoids assuming that a Request is copyable or trying to transfer the same Request object into two independent ownership domains. The higher layer constructs or retains whatever domain-specific input each selected operation requires.
+The generic coordinator accepts operations rather than duplicating a Request. The higher layer therefore constructs or retains whatever domain-specific input each selected operation requires, including move-only Request Types.
+
+## Synchronized typed remote handoff
+
+Mesh-style integration uses `OutboundHandoff<TCommand,TRuntime>`. `Prepare(request)` briefly enters the Runtime's application-provided Command mutex and reserves one of `ResourcePlan::RemoteHandoffCapacity` fixed stages. The returned move-only reservation retains only an immutable borrow; the caller must keep the Request alive until commit or abort.
+
+```cpp
+MyRequest remoteRequest{42};
+Command::OutboundHandoff<MyCommand, MyRuntime> outbound(runtime);
+auto prepared = outbound.Prepare(remoteRequest);
+if (!prepared.Accepted()) {
+    // No adapter call occurred.
+}
+
+auto stage = std::move(prepared).TakeReservation();
+auto localOperation = [&]() noexcept {
+    return runtime.Dispatch(MyRequest{42});
+};
+auto remoteOperation = [&](const MyRequest& request) noexcept {
+    // This one bounded call must consume/encode the borrow synchronously.
+    return mesh.Dispatch(request);
+};
+
+auto result = Command::DispatchScoped(
+    Command::LocalAndRemote{},
+    std::move(stage),
+    localOperation,
+    remoteOperation
+);
+```
+
+The coordinator invokes `localOperation` first, then commits the stage. Runtime releases the Command mutex before calling the adapter and reacquires it only to retire the stage, so no Mesh work or application callback runs under Command synchronization. Destroying or aborting an uncommitted stage calls no adapter. `RemoteOnly` has a corresponding overload that consumes a prepared stage without local admission.
 
 ## Result shape
 
 `LocalOnly` returns the selected local operation's result directly.
 
-`RemoteOnly` returns the selected higher-layer remote operation's result directly and performs no local Runtime call. There is therefore no local `DispatchResult` for a RemoteOnly call.
+`RemoteOnly` returns the selected higher-layer remote operation's result directly and performs no local Runtime admission. There is therefore no local `DispatchResult` for a RemoteOnly call.
 
-`LocalAndRemote` returns `LocalAndRemoteDispatchResult<TLocalResult, TRemoteResult>`. The two outcomes remain structurally separate and are accessed through `Local()` and `Remote()`. The result Type intentionally exposes no aggregate `Accepted`, success, quorum, rollback, or combined lifecycle semantic.
+`LocalAndRemote` returns `LocalAndRemoteDispatchResult<TLocalResult, TRemoteResult>`. The two non-throwing-movable outcomes remain structurally separate and are accessed through `Local()` and `Remote()`. The result Type intentionally exposes no aggregate `Accepted`, success, quorum, rollback, or combined lifecycle semantic.
 
-A remote result can itself be a scalar or a topology-bounded per-destination result collection owned by the higher integration/routing layer. EDP-Command neither defines nor dynamically sizes that collection.
+A Mesh adapter may return `RemoteCommandOperation<TCommand,TBinding>`. That move-only family surface contains the binding for a bounded frozen recipient set and exposes per-recipient identity/correlation, observation, finite waits, cancellation and at-most-once Response extraction without making Command own routing or wire delivery.
 
 ## Independence contract
 
-For `LocalAndRemote`, the selected local operation and selected remote operation are each invoked exactly once. A negative local outcome does not suppress the remote operation, and a negative/unavailable remote outcome does not turn into local fallback or suppress local admission.
+For `LocalAndRemote`, the selected local operation and selected remote operation are each invoked exactly once, in that order. A negative local outcome does not suppress the remote operation, and a negative/unavailable remote outcome does not turn into local fallback or suppress the already-attempted local admission.
 
-There is no cross-domain ordering contract. The implementation necessarily invokes operations in some sequence, but applications must not infer causality or ordering semantics from that sequence. Local and remote invocation lifecycles remain independent after the scoped call returns.
+This is an admission/handoff ordering contract only. It promises no local Handler completion before remote handoff, no route/arrival/execution order between recipients and no relationship between the independent lifecycles after the call returns.
 
 ## Resource and ownership consequences
 
-The scope Types are empty compile-time policy Types. `DispatchScoped` retains no provider, route, Request, destination, Handle, queue, or runtime state. `LocalAndRemoteDispatchResult` contains only the two result objects it returns to the caller. No new persistent state is added to `Runtime`, `ResourcePlan`, invocation records, or Bootstrap.
+The scope Types are empty compile-time policy Types. Generic `DispatchScoped` retains no state. Typed handoff staging adds exactly `RemoteHandoffCapacity` fixed pointer/generation records to Runtime and never duplicates Request payloads. A stage exists only until its bounded adapter call returns or it is aborted. `LocalAndRemoteDispatchResult` contains only the two independent result objects.
 
-No new EDP dependency is introduced. Transport, Serialisation, Security, destination identity, routing topology, correlation and remote retry remain outside EDP-Command.
+No new EDP dependency is introduced. Transport, Security, routing topology, retry and wire delivery remain outside EDP-Command. Command owns only its strong semantic `CommandInvocationCorrelation`; adapters construct it from authenticated source Device/runtime and the original invocation delivery identifier.
 
 ## Unsupported interpretations
 
@@ -74,5 +105,6 @@ F4 does not mean:
 - automatic remote fallback after local failure;
 - aggregate success/quorum;
 - rollback across domains;
-- a local/remote execution ordering guarantee;
+- local Handler completion before remote handoff;
+- route, arrival or recipient execution ordering;
 - embedding routing scope in the Request or wire representation.

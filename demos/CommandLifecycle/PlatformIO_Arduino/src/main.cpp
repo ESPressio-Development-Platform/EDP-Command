@@ -77,18 +77,29 @@ struct DoubleHandler final : Composition::Provider<
     }
 };
 
+struct FakeRemoteOperation final {
+    [[nodiscard]] std::int32_t operator()(const Request& request) noexcept {
+        return request.Value;
+    }
+};
+
 using WaitProvider = Threading::BoundedWaitWakeProvider<
     ESPressio::Platform::FreeRTOS::Synchronization::SignalProvider,
     4U
 >;
+using CommandMutex = Threading::OrdinaryMutexProvider<
+    Command::Composition::RuntimeMutexIdentity,
+    ESPressio::Platform::FreeRTOS::Synchronization::MutexProvider
+>;
 using CommandComposition = Composition::Composition<Command::Composition::Domain, DoubleHandler>;
-using ThreadingComposition = Composition::Composition<Threading::Domain, WaitProvider>;
+using ThreadingComposition = Composition::Composition<Threading::Domain, WaitProvider, CommandMutex>;
 using Architecture = Composition::Architecture<CommandComposition, ThreadingComposition>;
-using Bootstrap = Command::Bootstrap<DoubleCommand, Architecture, Command::ResourcePlan<4U, 3U, 1U>>;
+using Bootstrap = Command::Bootstrap<DoubleCommand, Architecture, Command::ResourcePlan<4U, 3U, 1U, 1U>>;
 
 DoubleHandler Handler;
 WaitProvider Waits;
-Bootstrap CommandRuntime(Handler, Waits);
+CommandMutex Mutex;
+Bootstrap CommandRuntime(Handler, Waits, Mutex);
 
 void setup() {
     Serial.begin(115200);
@@ -114,6 +125,22 @@ void setup() {
 
     Serial.printf("response=%ld\n", static_cast<long>(response.Take().Value));
     handle.Release();
+
+    Request remoteRequest{7};
+    Command::OutboundHandoff<DoubleCommand, Bootstrap::RuntimeType> outbound(runtime);
+    auto prepared = outbound.Prepare(remoteRequest);
+    if (!prepared.Accepted()) {
+        return;
+    }
+    auto stage = ESPressio::Memory::OwnershipTransfer::Move(prepared).TakeReservation();
+    FakeRemoteOperation remote;
+    const auto remoteValue = Command::DispatchScoped(
+        Command::RemoteOnly{},
+        ESPressio::Memory::OwnershipTransfer::Move(stage),
+        remote
+    );
+    Serial.printf("remote_handoff=%ld\n", static_cast<long>(remoteValue));
+
     static_cast<void>(runtime.BeginQuiesce());
 }
 

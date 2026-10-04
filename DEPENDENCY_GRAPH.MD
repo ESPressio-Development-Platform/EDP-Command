@@ -1,6 +1,6 @@
 # EDP-Command Dependency Graph
 
-> Revalidated: 2026-10-01 — Stage C2 adds direct EDP-Serialisation qualification for Request/Response while version remains `0.1.0`.
+> Revalidated: 2026-10-04 — Mesh V1 Command seams add no repository dependency and version remains `0.1.0`.
 
 ## Library Dependency Tree
 
@@ -8,8 +8,9 @@
 EDP-Command
   +-- EDP-System      [mandatory] Type/Field schema, Composition/Architecture and provider resolution
   +-- EDP-Primitives  [mandatory] Command Primitive-family contract and execution-domain scope vocabulary
+  +-- EDP-Serialisation [mandatory] serialisable semantic Type qualification
   +-- EDP-Memory      [mandatory] typed object lifetime and ownership transfer
-  +-- EDP-Threading   [mandatory] bounded finite wait/wake capability
+  +-- EDP-Threading   [mandatory] bounded finite wait/wake and ordinary-mutex capabilities
   `-- EDP-Clock       [mandatory] canonical Duration / MonotonicTimestamp vocabulary
 ```
 
@@ -21,9 +22,9 @@ EDP-Primitives supplies `PrimitiveFamilyIdentifier`, serialisable schema-bearing
 
 EDP-Serialisation supplies the canonical `SerialisableType` predicate used directly for Request and Response qualification; Command consumes no codec operation or wire profile.
 
-EDP-Memory supplies request/response/result lifetime and transfer operations. EDP-Threading supplies the externally-owned `BoundedWaitWake` capability used by Runtime/Handle finite waits. EDP-Clock supplies canonical time vocabulary.
+EDP-Memory supplies request/response/result lifetime and transfer operations. EDP-Threading supplies externally-owned `BoundedWaitWake` and Command-identity `OrdinaryMutex` capabilities. EDP-Clock supplies canonical time vocabulary.
 
-EDP-Threading itself consumes EDP-Platform synchronization providers; Command does not consume native Platform Signal mechanics. Platform-specific applications choose the concrete Signal provider used by the bounded Threading provider, for example FreeRTOS `SignalProvider`.
+EDP-Threading itself consumes EDP-Platform synchronization providers; Command does not consume native Platform Signal/Mutex mechanics. Platform-specific applications choose concrete providers used by bounded wait/wake and ordinary-mutex wrappers, for example FreeRTOS `SignalProvider` and `MutexProvider`.
 
 ## Optional Dependencies
 

@@ -2,7 +2,7 @@ name: Validation
 
 on:
   push:
-    branches: [main, serialisation_prerequisites]
+    branches: [main, serialisation_prerequisites, mesh_v1]
   pull_request:
 
 jobs:
