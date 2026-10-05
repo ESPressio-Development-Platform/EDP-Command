@@ -2,6 +2,11 @@
 
 **Primary classification:** PUBLIC API
 
+
+## `Command::WireOperationVersion` / `Command::WireOperation`
+
+The family-owned Mesh semantic operation vocabulary is version `1`. The stable non-zero codes are `Invocation = 1`, `Cancellation = 2`, and `TerminalResult = 3`. These codes identify Command semantics only; Mesh remains responsible for transport/delivery correlation while Command remains authoritative for invocation, cancellation, execution and terminal-result lifecycle.
+
 ## `Command::Planner`
 
 Canonical Planner Type associated with the Command Primitive family.

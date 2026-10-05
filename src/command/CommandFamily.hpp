@@ -1,8 +1,27 @@
 #pragma once
 
+#include <cstdint>
 #include <ESPressio_Primitives.hpp>
 
 namespace ESPressio::Command {
+
+    /// Version of the Command-family Mesh wire operation vocabulary.
+    inline static constexpr std::uint16_t WireOperationVersion = 1U;
+
+    /// Stable Command-family semantic operations carried by Mesh.
+    enum class WireOperation : std::uint16_t {
+        Invocation = 1U,
+        Cancellation = 2U,
+        TerminalResult = 3U
+    };
+
+    static_assert(
+        static_cast<std::uint16_t>(WireOperation::Invocation) != 0U &&
+        WireOperation::Invocation != WireOperation::Cancellation &&
+        WireOperation::Invocation != WireOperation::TerminalResult &&
+        WireOperation::Cancellation != WireOperation::TerminalResult
+    );
+
 
     /// Command-family planner contract type.
     ///
