@@ -420,6 +420,20 @@ namespace ESPressio::Command {
             return _binding.TakeResponse(index);
         }
 
+        /// Populates one caller-owned existing Response during binding-enforced at-most-once extraction.
+        ///
+        /// This overload preserves valid serialisable Response Types which intentionally have no
+        /// default constructor. The caller owns construction; the binding owns retained remote
+        /// response bytes/state and consumes them only according to its at-most-once contract.
+        [[nodiscard]] auto TakeResponse(
+            std::size_t index,
+            Response<TCommand>& destination
+        ) noexcept {
+            EnsureValid();
+            static_assert(noexcept(_binding.TakeResponse(index, destination)));
+            return _binding.TakeResponse(index, destination);
+        }
+
         /// Abandons source observation and deterministically releases the bounded binding once.
         void Release() noexcept {
             if (!_valid) {

@@ -210,6 +210,13 @@ struct FakeRemoteBinding final {
         return C::TakeResponseStatus::Taken;
     }
 
+    [[nodiscard]] C::TakeResponseStatus TakeResponse(
+        std::size_t index,
+        C::Response<ScopeCommand>&
+    ) noexcept {
+        return TakeResponse(index);
+    }
+
     void Release() noexcept {
         ++(*ReleaseCount);
     }
@@ -356,7 +363,11 @@ int main() {
             operation.RequestCancellation(0U) ==
             C::CancellationRequestResult::Requested
         );
-        assert(operation.TakeResponse(0U) == C::TakeResponseStatus::Taken);
+        C::Response<ScopeCommand> responseDestination;
+        assert(
+            operation.TakeResponse(0U, responseDestination) ==
+            C::TakeResponseStatus::Taken
+        );
         assert(operation.TakeResponse(0U) == C::TakeResponseStatus::AlreadyTaken);
 
         auto moved = std::move(operation);
